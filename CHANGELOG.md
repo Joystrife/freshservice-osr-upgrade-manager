@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.1 — Automatic Administrator elevation (experimental)
+
+- Dry Run remains available in a standard non-elevated Windows PowerShell session.
+- Switching to Live Mode automatically requests elevation through Windows User Account Control (UAC).
+- If UAC is approved, the GUI restarts with an elevated token and restores the selected installer paths, recovery directory, hashes, functional questions and approval checkboxes without writing an intermediate file.
+- If UAC is denied or elevation fails, the non-elevated GUI remains in Dry Run and no live operation starts.
+- A second Administrator check in the GUI and the worker blocks live execution if the token is not elevated.
+- The application title identifies the elevated session with [Administrator].
+
 ## 0.3.0 — Automatic recovery discovery (experimental)
 
 - Introduced an **Auto-find** button for matching previous OSR MSI packages.
