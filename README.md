@@ -2,7 +2,7 @@
 
 A generic **English-language Windows Forms / PowerShell 5.1** project for supervised in-place upgrades of the **Freshworks Freshservice Orchestration Server (OSR)**.
 
-**Release: v0.3.0 (experimental).** The GUI is implemented, but live upgrades and recovery have **not** been tested on a Windows Server. This is not a Freshworks-supported universal downgrade tool. Do not deploy in production before validating the upgrade and recovery paths for the specific versions.
+**Release: v0.3.1 (experimental).** The GUI is implemented, but live upgrades and recovery have **not** been tested on a Windows Server. This is not a Freshworks-supported universal downgrade tool. Do not deploy in production before validating the upgrade and recovery paths for the specific versions.
 
 ## Quick start
 
@@ -13,6 +13,12 @@ powershell.exe -NoProfile -STA -File ".\src\Freshservice_OSR_Upgrade_GUI.ps1"
 ```
 
 The **DRY RUN** checkbox is **enabled by default**. Click **Start dry run** to simulate preflight, recovery planning, both Freshworks service stops, file backup, MSI installation, both service starts, interactive acceptance tests, and the rollback decision. The Dry Run performs no intended system modifications; logs remain in the GUI's memory. Read-only local MSI and environment queries may occur.
+
+## Administrator elevation (v0.3.1)
+
+The default **Dry Run** and read-only discovery operate without Administrator privileges. When **Dry Run** is unchecked, the GUI requests explicit confirmation and then triggers Windows User Account Control (UAC) via `Start-Process -Verb RunAs`. After successful elevation, the elevated GUI restores the file selections, paths, hashes and test questions, without creating an intermediate state file. Its window title displays **[Administrator]**.
+
+If elevation is denied or unavailable, the program remains in **Dry Run**. The live GUI and deployment worker both independently reject any live execution without an elevated Administrator token.
 
 ## What is new in v0.3.0
 
@@ -61,13 +67,12 @@ src/
   OSR.Upgrade.Worker.ps1            # External upgrade worker and acceptance decisions
   OSR.Upgrade.Core.psm1             # Version, MSI, service and recovery helper functions
 docs/
-  ARCHITECTURE.md
-  OPERATIONS.md
-  LIMITATIONS.md
+  DESIGN.md
+  INSTALLATION.md
   RECOVERY_PROVIDERS.md
-tests/
-  Check-Syntax.ps1
-  Test-Static.py
+.github/workflows/
+  powershell-syntax.yml
+CHANGELOG.md
 ```
 
 ## Privacy and operational safety
