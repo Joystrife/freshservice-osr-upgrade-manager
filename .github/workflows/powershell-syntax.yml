@@ -4,10 +4,12 @@ on:
   push:
     paths:
       - 'src/**'
+      - 'tests/**'
       - '.github/workflows/powershell-syntax.yml'
   pull_request:
     paths:
       - 'src/**'
+      - 'tests/**'
       - '.github/workflows/powershell-syntax.yml'
 
 jobs:
@@ -38,3 +40,8 @@ jobs:
             }
           }
           if ($failures -gt 0) { throw "$failures PowerShell syntax error(s) detected." }
+      - name: Regression tests - OSR registry discovery
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tests\Test-RegistryDiscovery.ps1
