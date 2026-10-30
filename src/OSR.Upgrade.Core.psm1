@@ -7,27 +7,57 @@ function Test-OsrAdministrator {
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
+function Get-OsrRegistryValue {
+    param([Parameter(Mandatory)]$Entry,[Parameter(Mandatory)][string]$PropertyName)
+    # Uninstall registry keys are not uniform. In StrictMode, reading a missing
+    # property directly (for example DisplayName or InstallSource) throws.
+    if ($null -eq $Entry) { return $null }
+    $property = $Entry.PSObject.Properties[$PropertyName]
+    if ($null -eq $property) { return $null }
+    return $property.Value
+}
+
+function ConvertFrom-OsrUninstallEntries {
+    param([AllowEmptyCollection()][object[]]$Entries)
+    $products = @(
+        foreach ($entry in @($Entries)) {
+            if ($null -eq $entry) { continue }
+            $name = [string](Get-OsrRegistryValue -Entry $entry -PropertyName 'DisplayName')
+            $version = [string](Get-OsrRegistryValue -Entry $entry -PropertyName 'DisplayVersion')
+            if ($name -eq 'Orchestration Server' -and -not [string]::IsNullOrWhiteSpace($version)) {
+                $entry
+            }
+        }
+    )
+    if ($products.Count -ne 1) {
+        throw "Expected exactly one registered Orchestration Server installation with a version; found $($products.Count)."
+    }
+    $app = $products[0]
+    $versionText = [string](Get-OsrRegistryValue -Entry $app -PropertyName 'DisplayVersion')
+    try { $installedVersion = [version]$versionText }
+    catch { throw "Invalid installed Orchestration Server version in the registry: $versionText" }
+    $childName = [string](Get-OsrRegistryValue -Entry $app -PropertyName 'PSChildName')
+    return [pscustomobject]@{
+        Version = $installedVersion
+        Name = [string](Get-OsrRegistryValue -Entry $app -PropertyName 'DisplayName')
+        RegistryKey = [string](Get-OsrRegistryValue -Entry $app -PropertyName 'PSPath')
+        ProductCode = if ($childName -match '^\{[0-9A-Fa-f-]{36}\}$') { $childName } else { $null }
+        InstallLocation = [string](Get-OsrRegistryValue -Entry $app -PropertyName 'InstallLocation')
+        UninstallString = [string](Get-OsrRegistryValue -Entry $app -PropertyName 'UninstallString')
+        InstallSource = [string](Get-OsrRegistryValue -Entry $app -PropertyName 'InstallSource')
+        LocalPackage = [string](Get-OsrRegistryValue -Entry $app -PropertyName 'LocalPackage')
+    }
+}
+
 function Get-OsrProduct {
     $keys = @(
         'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
         'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
     )
-    $products = @(Get-ItemProperty $keys -ErrorAction SilentlyContinue |
-        Where-Object { $_.DisplayName -eq 'Orchestration Server' -and $_.DisplayVersion })
-    if ($products.Count -ne 1) {
-        throw "Expected exactly one registered Orchestration Server installation; found $($products.Count)."
-    }
-    $app = $products[0]
-    return [pscustomobject]@{
-        Version = [version]$app.DisplayVersion
-        Name = [string]$app.DisplayName
-        RegistryKey = [string]$app.PSPath
-        ProductCode = if ([string]$app.PSChildName -match '^\{[0-9A-Fa-f-]{36}\}$') { [string]$app.PSChildName } else { $null }
-        InstallLocation = [string]$app.InstallLocation
-        UninstallString = [string]$app.UninstallString
-        InstallSource = [string]$app.InstallSource
-        LocalPackage = [string]$app.LocalPackage
-    }
+    # No registry writes. Other installed programs may not have a DisplayName,
+    # DisplayVersion, InstallSource or InstallLocation: skip them safely.
+    $entries = @(Get-ItemProperty -Path $keys -ErrorAction SilentlyContinue)
+    return ConvertFrom-OsrUninstallEntries -Entries $entries
 }
 
 function Get-OsrServiceRecords {
