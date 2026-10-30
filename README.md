@@ -2,7 +2,7 @@
 
 A generic **English-language Windows Forms / PowerShell 5.1** project for supervised in-place upgrades of the **Freshworks Freshservice Orchestration Server (OSR)**.
 
-**Release: v0.3.1 (experimental).** The GUI is implemented, but live upgrades and recovery have **not** been tested on a Windows Server. This is not a Freshworks-supported universal downgrade tool. Do not deploy in production before validating the upgrade and recovery paths for the specific versions.
+**Release: v0.3.2 (experimental).** The GUI is implemented, but live upgrades and recovery have **not** been tested on a Windows Server. This is not a Freshworks-supported universal downgrade tool. Do not deploy in production before validating the upgrade and recovery paths for the specific versions.
 
 ## Quick start
 
@@ -19,6 +19,13 @@ The **DRY RUN** checkbox is **enabled by default**. Click **Start dry run** to s
 The default **Dry Run** and read-only discovery operate without Administrator privileges. When **Dry Run** is unchecked, the GUI requests explicit confirmation and then triggers Windows User Account Control (UAC) via `Start-Process -Verb RunAs`. After successful elevation, the elevated GUI restores the file selections, paths, hashes and test questions, without creating an intermediate state file. Its window title displays **[Administrator]**.
 
 If elevation is denied or unavailable, the program remains in **Dry Run**. The live GUI and deployment worker both independently reject any live execution without an elevated Administrator token.
+
+## What is new in v0.3.2
+
+- **Auto-find registry fix:** Windows uninstall entries without a `DisplayName` or other optional properties are skipped safely.
+- **Visible token status:** the window header shows `SESSION: STANDARD USER` or `SESSION: ADMINISTRATOR`.
+- **UAC behavior:** Dry Run never triggers UAC; the UAC prompt appears when switching to Live Mode from a standard session. If the process was already elevated, no second prompt is needed.
+- **Regression test:** GitHub Actions runs a Windows PowerShell 5.1 registry detection test.
 
 ## What is new in v0.3.0
 
