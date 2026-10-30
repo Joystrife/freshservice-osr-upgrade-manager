@@ -1,50 +1,87 @@
 # Freshservice OSR Upgrade Manager
 
-A generic Windows PowerShell 5.1 / Windows Forms application for **operator-supervised upgrades** of the Freshworks Freshservice Orchestration Server.
+A generic **English-language Windows Forms / PowerShell 5.1** project for supervised in-place upgrades of the **Freshworks Freshservice Orchestration Server (OSR)**.
 
-## Planned workflow
+**Release: v0.3.0 (experimental).** The GUI is implemented, but live upgrades and recovery have **not** been tested on a Windows Server. This is not a Freshworks-supported universal downgrade tool. Do not deploy in production before validating the upgrade and recovery paths for the specific versions.
 
-1. Choose the official `FO-OSR.msi` using **Browse**.
-2. Detect or select the **existing installation directory**.
-3. Run preflight checks (MSI version, identity, services, integrity).
-4. Supply evidence of an approved backup and an independently validated recovery script.
-5. Start the vendor MSI upgrade and monitor progress and logs.
-6. Perform configurable manual acceptance tests in Freshservice.
-7. If a test fails, choose whether to invoke the **approved rollback** procedure.
-8. Export an audit report.
+## Quick start
 
-## Scope
-
-The initial version targets **in-place upgrades** of an existing Windows Orchestration Server installation. Selecting a directory does **not** relocate an installed application. First-time installation and custom MSI directory properties need separate vendor validation.
-
-An automatic downgrade is **not included**. Recovery requires an approved, independently tested script and restorable configuration. A successful MSI result does not by itself establish functional success.
-
-## Publication status
-
-The GUI script is being prepared for its first public commit. The documentation is available now; the executable source has not yet been uploaded to `src/`. Do not treat this repository as a downloadable production tool until that source is published and tested on Windows.
-
-## Requirements
-
-- Authorized elevated Windows PowerShell 5.1 interactive session (STA)
-- Official Freshworks installer
-- Approved maintenance window, backup and restoration plan
-- Manual functional acceptance tests after deployment
-
-## Run
+In an authorized Windows PowerShell 5.1 session:
 
 ```powershell
 powershell.exe -NoProfile -STA -File ".\src\Freshservice_OSR_Upgrade_GUI.ps1"
 ```
 
-## Project safety
+The **DRY RUN** checkbox is **enabled by default**. Click **Start dry run** to simulate preflight, recovery planning, both Freshworks service stops, file backup, MSI installation, both service starts, interactive acceptance tests, and the rollback decision. The Dry Run performs no intended system modifications; logs remain in the GUI's memory. Read-only local MSI and environment queries may occur.
 
-Do not commit MSI installers, deployment logs, host identifiers, configuration backups, credentials or private recovery scripts. Source code should remain vendor-generic.
+## What is new in v0.3.0
 
-## Status
+- **Auto-find** next to the recovery MSI field. It searches a bounded list of original installer locations, including the registered installation source, the selected upgrade MSI's directory, Downloads, and this application's previously created recovery points.
+- The **previous installer is optional to select manually**: during live preflight, the worker also automatically searches for a verified package matching the currently installed OSR version.
+- MSI identity and version must match; the package must have a valid Freshworks Authenticode signature **or** an independently supplied matching SHA-256. A package merely having the right filename is not trusted.
+- The Windows Installer cache (`C:\Windows\Installer`) is **not** treated as an original, fully redistributable MSI.
+- Read-only **recovery environment diagnostics** report virtualization information and whether Windows Backup tooling is present. These indicators do **not** constitute a usable VM checkpoint or a verified backup.
+- If no verified automatic recovery mechanism exists, the **live upgrade is blocked** instead of pretending a local file backup can undo an MSI upgrade.
 
-**Early-stage / not production validated.** Test on an approved non-production system and verify the Freshworks-supported upgrade path before use in production.
+## Controlled upgrade workflow
+
+1. Select the **new official `FO-OSR.msi`** with Browse.
+2. Leave the recovery MSI blank and use **Auto-find**; select the earlier original MSI manually only when discovery fails.
+3. Confirm the existing installation directory (detected from the Freshworks service) and the recovery storage location (outside the installation tree).
+4. Run preflight. The system verifies elevation, vendor MSI identity, versions, package authenticity, the two OSR services and recovery package readiness.
+5. After the operator has independently tested and authorized the exact downgrade/recovery procedure, disable Dry Run, confirm the live operation, and start the upgrade.
+6. The worker stops **Orchestration Server - WinRM_SSH** and **Orchestration Server**, copies the OSR files with NTFS metadata and stores the verified previous MSI in protected recovery storage.
+7. The worker launches the new `FO-OSR.msi`, monitors the exit code, restarts both Freshworks services and checks the installed version.
+8. The operator performs functional Freshservice tests. If a test fails, the GUI asks whether to attempt the integrated application rollback. Declining the rollback results in **NOT VALIDATED**.
+9. Reports and MSI logs are written locally for a **live operation** only.
+
+The native **Windows WinRM** service is never stopped by the application.
+
+## Recovery strategies: implemented vs future
+
+| Capability | Status |
+| --- | --- |
+| Discover an original previous-version MSI automatically | **Implemented**; local, bounded, read-only search |
+| Verify a previous-version MSI against version, vendor identity and signature/hash | **Implemented** |
+| Protected OSR file snapshot plus verified previous installer | **Implemented**; Windows validation pending |
+| Integrated application recovery using the previous MSI and backed-up files | **Implemented** but **requires an independently validated version-specific procedure** |
+| Detect whether the machine looks virtual and Windows Backup tooling exists | **Read-only diagnostics only** |
+| Create and revert a Hyper-V/VMware checkpoint from within the OSR VM | **Not implemented** |
+| Automatically roll back the full Windows system without the original MSI | **Not implemented** |
+
+A Hyper-V production checkpoint must be controlled from an authorized hypervisor management context. Restoring a VM may terminate the guest session and requires an independently running recovery controller. Windows Server Backup also has separate restore procedures. Neither merely having VSS available nor being on a virtual machine guarantees that an automatic full-system rollback is possible.
+
+**Automatic discovery is not automatic historical download:** Freshworks' published setup instructions show how to obtain the current `FO-OSR.msi`, not a public archive of old versions.
+
+## Project files
+
+```text
+src/
+  Freshservice_OSR_Upgrade_GUI.ps1  # GUI, read-only discovery and in-memory Dry Run
+  OSR.Upgrade.Worker.ps1            # External upgrade worker and acceptance decisions
+  OSR.Upgrade.Core.psm1             # Version, MSI, service and recovery helper functions
+docs/
+  ARCHITECTURE.md
+  OPERATIONS.md
+  LIMITATIONS.md
+  RECOVERY_PROVIDERS.md
+tests/
+  Check-Syntax.ps1
+  Test-Static.py
+```
+
+## Privacy and operational safety
+
+The source contains no customer-specific hosts, tenants, credentials, internal network names or identifiers. Never commit installer binaries, logs, configuration backups, secret keys, or recovery-point contents. Recovery data may contain Freshworks tokens or proxy credentials and must be secured by local ACLs and organizational retention rules.
 
 ## References
 
-- [Freshworks Orchestration Server setup](https://support.freshservice.com/support/solutions/articles/50000003259-setting-up-the-orchestration-server)
-- [Microsoft msiexec reference](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/msiexec)
+- [Freshworks – Setting up the Orchestration Server](https://support.freshservice.com/support/solutions/articles/50000003259-setting-up-the-orchestration-server)
+- [Freshworks – Troubleshooting Guide for Orchestration Server Issues](https://support.freshservice.com/support/solutions/articles/50000003393-troubleshooting-guide-for-orchestration-server-issues)
+- [Microsoft – Windows Installer Rollback Installation](https://learn.microsoft.com/en-us/windows/win32/msi/rollback-installation)
+- [Microsoft – Hyper-V checkpoints](https://learn.microsoft.com/en-us/windows-server/virtualization/hyper-v/checkpoints)
+- [Microsoft – Windows Server Backup (`wbadmin`)](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/wbadmin)
+
+## License
+
+MIT — see `LICENSE`.
