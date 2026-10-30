@@ -1,99 +1,104 @@
 # Freshservice OSR Upgrade Manager
 
-A generic **English-language Windows Forms / PowerShell 5.1** project for supervised in-place upgrades of the **Freshworks Freshservice Orchestration Server (OSR)**.
+**Environment-aware deployment and recovery management for the Freshworks Freshservice Orchestration Server.**
 
-**Release: v0.3.2 (experimental).** The GUI is implemented, but live upgrades and recovery have **not** been tested on a Windows Server. This is not a Freshworks-supported universal downgrade tool. Do not deploy in production before validating the upgrade and recovery paths for the specific versions.
+[![PowerShell 5.1 checks](https://github.com/Joystrife/freshservice-osr-upgrade-manager/actions/workflows/powershell-syntax.yml/badge.svg)](https://github.com/Joystrife/freshservice-osr-upgrade-manager/actions/workflows/powershell-syntax.yml)
 
-## Quick start
+**Release: v0.4.0 — experimental development preview.** This is a community project, not an official Freshworks application. The GUI runs on Windows PowerShell 5.1 and Windows Forms. **Windows server upgrades, backups and recovery have not been validated end-to-end in a production environment.**
 
-In an authorized Windows PowerShell 5.1 session:
+## Vision
+
+The application aims to reduce the number of manual tasks required to maintain a Freshservice Orchestration Server:
+
+**Detect environment → Select official installer → Assess recovery → Create a recoverable point → Deploy → Verify → Accept or Restore**
+
+A future recovery-provider architecture will select capabilities based on **what can actually be created and restored**, not merely which hypervisor or cloud vendor the host reports.
+
+## Current capabilities
+
+| Capability | Status |
+| --- | --- |
+| English-language Windows Forms GUI | Implemented |
+| Default-on, in-memory Dry Run | Implemented |
+| Administrator elevation through Windows UAC when entering Live Mode | Implemented; Windows acceptance testing ongoing |
+| Installed OSR version and Freshworks service discovery | Implemented |
+| Official MSI metadata and signature/checksum validation | Implemented |
+| Automatic search for a matching previous original OSR MSI | Implemented (bounded local search; cannot download old versions) |
+| Controlled Windows service stop/start around MSI deployment | Implemented; real deployment not validated |
+| Manual post-installation functional acceptance | Implemented |
+| Previous-MSI-based application recovery engine | Implemented but **requires independently validated downgrade procedure** |
+| Windows Server Backup (WSB) feature, command and destination candidate discovery | **New in v0.4.0: read-only only** |
+| WSB backup command preview with source/target volume validation | **New in v0.4.0: no command execution** |
+| Automatic creation of a Windows Server Backup | Not implemented |
+| Full-system recovery automatically executed through WinRE or an external controller | Not implemented |
+| AWS / Hyper-V / VMware provider integration | Planned, not implemented |
+| First-time OSR installation or relocation | Planned, not implemented |
+
+**A Windows Server Backup command or a hypervisor name is not sufficient evidence that a usable recovery point exists.** The current live-upgrade workflow remains gated by a verified older MSI **and** an independently validated, version-specific application recovery procedure. A WSB capability assessment does not unlock it.
+
+## Quick start: safe Dry Run
+
+Download or clone the repository on a Windows host. Run from the project root:
 
 ```powershell
 powershell.exe -NoProfile -STA -File ".\src\Freshservice_OSR_Upgrade_GUI.ps1"
 ```
 
-The **DRY RUN** checkbox is **enabled by default**. Click **Start dry run** to simulate preflight, recovery planning, both Freshworks service stops, file backup, MSI installation, both service starts, interactive acceptance tests, and the rollback decision. The Dry Run performs no intended system modifications; logs remain in the GUI's memory. Read-only local MSI and environment queries may occur.
+- **DRY RUN** is checked on startup. The simulated upgrade, backup, service changes and rollback do not modify the server; logs remain in memory.
+- **Auto-find** searches for a trustworthy original previous-version MSI without changing software.
+- **Check Windows backup** detects Windows Server Backup and candidate backup volumes. This is also read-only.
+- If Live Mode is requested, UAC requires a confirmed elevated administrator session. Declining elevation leaves Dry Run enabled.
+- Do **not** perform a production upgrade unless its supported recovery procedure has been independently tested and approved.
 
-## Administrator elevation (v0.3.1)
+## Windows Server Backup integration — v0.4.0
 
-The default **Dry Run** and read-only discovery operate without Administrator privileges. When **Dry Run** is unchecked, the GUI requests explicit confirmation and then triggers Windows User Account Control (UAC) via `Start-Process -Verb RunAs`. After successful elevation, the elevated GUI restores the file selections, paths, hashes and test questions, without creating an intermediate state file. Its window title displays **[Administrator]**.
+`src/OSR.Recovery.WindowsServerBackup.psm1` introduces a Microsoft-native provider:
 
-If elevation is denied or unavailable, the program remains in **Dry Run**. The live GUI and deployment worker both independently reject any live execution without an elevated Administrator token.
+1. Checks the presence of `wbadmin.exe` and the Windows Server Backup feature when the relevant Windows feature command is available.
+2. Detects Windows and OSR installation volumes.
+3. Lists other local fixed volumes as **unverified** destination candidates.
+4. Builds a non-executing `wbadmin start backup` command preview that includes critical OS volumes and, when separate, the OSR source volume.
+5. Rejects targets on source volumes and invalid local/UNC destinations.
 
-## What is new in v0.3.2
+This version does **not** create full Windows backups, install Windows features, start or stop backup jobs, or restore a machine. Full-system recovery via `wbadmin start sysrecovery` must run from Windows Recovery Environment. A production-grade remote recovery controller is a separate milestone.
 
-- **Auto-find registry fix:** Windows uninstall entries without a `DisplayName` or other optional properties are skipped safely.
-- **Visible token status:** the window header shows `SESSION: STANDARD USER` or `SESSION: ADMINISTRATOR`.
-- **UAC behavior:** Dry Run never triggers UAC; the UAC prompt appears when switching to Live Mode from a standard session. If the process was already elevated, no second prompt is needed.
-- **Regression test:** GitHub Actions runs a Windows PowerShell 5.1 registry detection test.
+See [Recovery Architecture](docs/RECOVERY_ARCHITECTURE.md) and [Roadmap](ROADMAP.md).
 
-## What is new in v0.3.0
-
-- **Auto-find** next to the recovery MSI field. It searches a bounded list of original installer locations, including the registered installation source, the selected upgrade MSI's directory, Downloads, and this application's previously created recovery points.
-- The **previous installer is optional to select manually**: during live preflight, the worker also automatically searches for a verified package matching the currently installed OSR version.
-- MSI identity and version must match; the package must have a valid Freshworks Authenticode signature **or** an independently supplied matching SHA-256. A package merely having the right filename is not trusted.
-- The Windows Installer cache (`C:\Windows\Installer`) is **not** treated as an original, fully redistributable MSI.
-- Read-only **recovery environment diagnostics** report virtualization information and whether Windows Backup tooling is present. These indicators do **not** constitute a usable VM checkpoint or a verified backup.
-- If no verified automatic recovery mechanism exists, the **live upgrade is blocked** instead of pretending a local file backup can undo an MSI upgrade.
-
-## Controlled upgrade workflow
-
-1. Select the **new official `FO-OSR.msi`** with Browse.
-2. Leave the recovery MSI blank and use **Auto-find**; select the earlier original MSI manually only when discovery fails.
-3. Confirm the existing installation directory (detected from the Freshworks service) and the recovery storage location (outside the installation tree).
-4. Run preflight. The system verifies elevation, vendor MSI identity, versions, package authenticity, the two OSR services and recovery package readiness.
-5. After the operator has independently tested and authorized the exact downgrade/recovery procedure, disable Dry Run, confirm the live operation, and start the upgrade.
-6. The worker stops **Orchestration Server - WinRM_SSH** and **Orchestration Server**, copies the OSR files with NTFS metadata and stores the verified previous MSI in protected recovery storage.
-7. The worker launches the new `FO-OSR.msi`, monitors the exit code, restarts both Freshworks services and checks the installed version.
-8. The operator performs functional Freshservice tests. If a test fails, the GUI asks whether to attempt the integrated application rollback. Declining the rollback results in **NOT VALIDATED**.
-9. Reports and MSI logs are written locally for a **live operation** only.
-
-The native **Windows WinRM** service is never stopped by the application.
-
-## Recovery strategies: implemented vs future
-
-| Capability | Status |
-| --- | --- |
-| Discover an original previous-version MSI automatically | **Implemented**; local, bounded, read-only search |
-| Verify a previous-version MSI against version, vendor identity and signature/hash | **Implemented** |
-| Protected OSR file snapshot plus verified previous installer | **Implemented**; Windows validation pending |
-| Integrated application recovery using the previous MSI and backed-up files | **Implemented** but **requires an independently validated version-specific procedure** |
-| Detect whether the machine looks virtual and Windows Backup tooling exists | **Read-only diagnostics only** |
-| Create and revert a Hyper-V/VMware checkpoint from within the OSR VM | **Not implemented** |
-| Automatically roll back the full Windows system without the original MSI | **Not implemented** |
-
-A Hyper-V production checkpoint must be controlled from an authorized hypervisor management context. Restoring a VM may terminate the guest session and requires an independently running recovery controller. Windows Server Backup also has separate restore procedures. Neither merely having VSS available nor being on a virtual machine guarantees that an automatic full-system rollback is possible.
-
-**Automatic discovery is not automatic historical download:** Freshworks' published setup instructions show how to obtain the current `FO-OSR.msi`, not a public archive of old versions.
-
-## Project files
+## Source layout
 
 ```text
 src/
-  Freshservice_OSR_Upgrade_GUI.ps1  # GUI, read-only discovery and in-memory Dry Run
-  OSR.Upgrade.Worker.ps1            # External upgrade worker and acceptance decisions
-  OSR.Upgrade.Core.psm1             # Version, MSI, service and recovery helper functions
+  Freshservice_OSR_Upgrade_GUI.ps1       # Windows Forms GUI and in-memory Dry Run
+  OSR.Upgrade.Worker.ps1                 # Controlled upgrade + operator decisions
+  OSR.Upgrade.Core.psm1                  # MSI, services, product and local recovery
+  OSR.Recovery.WindowsServerBackup.psm1  # Read-only Windows backup provider v0.4
+tests/
+  Test-RegistryDiscovery.ps1
+  Test-WindowsBackupProvider.ps1
 docs/
   DESIGN.md
   INSTALLATION.md
+  RECOVERY_ARCHITECTURE.md
   RECOVERY_PROVIDERS.md
 .github/workflows/
   powershell-syntax.yml
+ROADMAP.md
 CHANGELOG.md
 ```
 
-## Privacy and operational safety
+## Security and responsible operation
 
-The source contains no customer-specific hosts, tenants, credentials, internal network names or identifiers. Never commit installer binaries, logs, configuration backups, secret keys, or recovery-point contents. Recovery data may contain Freshworks tokens or proxy credentials and must be secured by local ACLs and organizational retention rules.
+Never commit MSI installers, recovery-point files, registry exports, service credentials, private keys, backup archives, machine identifiers or execution logs. Preserve restrictive Windows file permissions on backup data. Dry Run does not validate a real upgrade; a successful application MSI install does not prove the orchestration workflows still function.
 
-## References
+GitHub Actions executes **Windows PowerShell 5.1 syntax checks and mock-style regression tests**. These tests do not create backups, stop services, or run installations.
 
-- [Freshworks – Setting up the Orchestration Server](https://support.freshservice.com/support/solutions/articles/50000003259-setting-up-the-orchestration-server)
-- [Freshworks – Troubleshooting Guide for Orchestration Server Issues](https://support.freshservice.com/support/solutions/articles/50000003393-troubleshooting-guide-for-orchestration-server-issues)
-- [Microsoft – Windows Installer Rollback Installation](https://learn.microsoft.com/en-us/windows/win32/msi/rollback-installation)
-- [Microsoft – Hyper-V checkpoints](https://learn.microsoft.com/en-us/windows-server/virtualization/hyper-v/checkpoints)
-- [Microsoft – Windows Server Backup (`wbadmin`)](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/wbadmin)
+## Official references
+
+- [Freshworks — Setting up the Orchestration Server](https://support.freshservice.com/support/solutions/articles/50000003259-setting-up-the-orchestration-server)
+- [Microsoft — Windows Server Backup command reference](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/windows-server-backup-command-reference)
+- [Microsoft — wbadmin start backup](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/wbadmin-start-backup)
+- [Microsoft — wbadmin start sysrecovery](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/wbadmin-start-sysrecovery)
 
 ## License
 
-MIT — see `LICENSE`.
+A project-wide license has not been selected. Public visibility does not, by itself, grant permission to redistribute or modify the code. A license will be added once the project owner confirms the applicable rights and preferred terms.
