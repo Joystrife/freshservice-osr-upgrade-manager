@@ -88,9 +88,13 @@ $title=New-Label 'Freshservice OSR Upgrade Manager' 25 15 950 38
 $title.Font=New-Object Drawing.Font('Segoe UI Semibold',19)
 $title.ForeColor=[Drawing.Color]::FromArgb(18,87,71)
 $form.Controls.Add($title)
-$subtitle=New-Label 'Auto-discovery  |  Integrated recovery  |  Controlled deployment  |  Manual acceptance' 26 56 950 22
+$subtitle=New-Label 'Auto-discovery  |  Integrated recovery  |  Controlled deployment  |  Manual acceptance' 26 56 720 22
 $subtitle.ForeColor=[Drawing.Color]::FromArgb(83,100,110)
 $form.Controls.Add($subtitle)
+$script:lblPrivilege=New-Label 'Checking Windows token...' 750 56 228 22
+$script:lblPrivilege.TextAlign='MiddleRight'
+$script:lblPrivilege.Font=New-Object Drawing.Font('Segoe UI Semibold',9)
+$form.Controls.Add($script:lblPrivilege)
 
 Add-Row 'New FO-OSR.msi' 104 'Msi'
 Add-Row 'Recovery MSI (auto-detect)' 145 'Previous'
@@ -540,6 +544,16 @@ function Start-DryRun([bool]$PreflightOnly) {
     }
 }
 function Update-GuiMode {
+    $elevated = Test-OsrAdministrator
+    if ($elevated) {
+        $script:lblPrivilege.Text = 'SESSION: ADMINISTRATOR'
+        $script:lblPrivilege.ForeColor = [Drawing.Color]::FromArgb(18,112,72)
+        $form.Text = 'Freshservice OSR Upgrade Manager [Administrator]'
+    } else {
+        $script:lblPrivilege.Text = 'SESSION: STANDARD USER'
+        $script:lblPrivilege.ForeColor = [Drawing.Color]::FromArgb(162,89,22)
+        $form.Text = 'Freshservice OSR Upgrade Manager'
+    }
     $dry=[bool]$script:chkDryRun.Checked
     $script:btnStart.Text=if($dry){'Start dry run'}else{'START REAL UPGRADE'}
     $script:btnPreflight.Text=if($dry){'Read-only preflight'}else{'Run preflight'}
