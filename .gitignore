@@ -1,0 +1,28 @@
+# Windows installer packages and backups
+*.msi
+*.msix
+*.zip
+*.7z
+*.bak
+*.cab
+
+# Generated logs, reports and environment-specific data
+*.log
+reports/
+logs/
+backups/
+secrets/
+*.deployment.json
+*.upgrade-report.json
+.env
+.env.*
+*.pfx
+*.p12
+*.key
+*.pem
+
+# Editor/OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
