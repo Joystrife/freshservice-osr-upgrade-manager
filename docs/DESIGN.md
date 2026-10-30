@@ -1,23 +1,29 @@
-# Design and Operational Model
+# Architecture and execution model
 
-The GUI separates **technical verification** from **functional acceptance**. A running Windows service does not prove that application orchestrations work.
+Freshservice OSR Upgrade Manager is a Windows PowerShell 5.1 / Windows Forms GUI for operator-supervised **in-place** upgrades of the Freshworks Orchestration Server.
 
-## Modules and states
+## Code modules
 
-- Preflight: identify installed MSI version, OSR service path, official installer metadata and integrity, services, and operator-approved backup/recovery prerequisites.
-- Deployment: invoke the vendor MSI with logging and no automatic reboot; observe the process and record the exit code.
-- Technical validation: confirm version and service state.
-- Manual validation: ask administrator-configurable Yes/No functional questions after deployment.
-- Rollback decision: a No answer offers execution of an independently approved recovery script; declining it leaves the upgrade **not validated**.
-- Audit: save local logs and machine-readable results; these are not intended for public source control.
+- `src/Freshservice_OSR_Upgrade_GUI.ps1`: English-language GUI, file selection, default-on in-memory Dry Run, read-only recovery media discovery, progress and operator prompts.
+- `src/OSR.Upgrade.Core.psm1`: installed version, Windows services, MSI metadata and signature/hash, original MSI discovery and recovery environment diagnostics.
+- `src/OSR.Upgrade.Worker.ps1`: authorized live preflight, protected recovery point, two-service stop/start, MSI execution, operator acceptance and integrated MSI-based application recovery.
 
-## Constraints
+## Automatic original-MSI discovery (v0.3)
 
-- First-time installation and moving the installation directory are **not implemented**.
-- An MSI installation success does not necessarily establish application-level success.
-- Version rollback is not implied by rerunning an older MSI.
-- The public source must contain no environment-specific IP addresses, credentials, OU names or asset identifiers.
+The GUI's **Auto-find** function and the worker independently inspect the registered installation source, the selected upgrade package directory, common Downloads directories and earlier application recovery-point folders. They do **not** scan arbitrary disks or download historical software. A candidate is only accepted when it matches the exact installed version and Freshworks MSI identity and is authenticated by vendor signature or an independently supplied SHA-256.
 
-## Validation status
+The Windows Installer cache is not treated as fully reusable historical installation media.
 
-Static code review is not equivalent to a Windows acceptance test. Validate on an authorized non-production host before production use.
+## Recovery readiness
+
+A backup of application files does not revert all changes Windows Installer makes. The application recovery procedure requires a verified original MSI plus a separately validated version-specific uninstall/reinstall/restore sequence.
+
+Virtualization and Windows Backup checks are **diagnostic only**. They do not prove that a restorable snapshot exists and they cannot enable live deployment on their own. Full-VM restoration needs an independent controller that remains operational after the OSR guest has stopped or been restored. See [Recovery Providers](RECOVERY_PROVIDERS.md).
+
+## Operational states
+
+`PREFLIGHT` → `RECOVERY_DISCOVERY` → `BACKUP` → `INSTALL` → `HEALTH` → `ACCEPTANCE` → `DONE` or an approved `ROLLBACK` decision.
+
+A manual functional test failure offers rollback, not an automatic destructive decision. Declining it records a NOT VALIDATED result.
+
+**Release status:** Experimental. Cross-platform static checks passed; Windows runtime and version-specific recovery are still to be validated.
