@@ -1,29 +1,41 @@
-# Architecture and execution model
+# Technical Design
 
-Freshservice OSR Upgrade Manager is a Windows PowerShell 5.1 / Windows Forms GUI for operator-supervised **in-place** upgrades of the Freshworks Orchestration Server.
+## Project scope
 
-## Code modules
+Freshservice OSR Upgrade Manager is an English-language, Windows PowerShell 5.1 and Windows Forms application for controlled lifecycle operations on Freshworks Freshservice Orchestration Server.
 
-- `src/Freshservice_OSR_Upgrade_GUI.ps1`: English-language GUI, file selection, default-on in-memory Dry Run, read-only recovery media discovery, progress and operator prompts.
-- `src/OSR.Upgrade.Core.psm1`: installed version, Windows services, MSI metadata and signature/hash, original MSI discovery and recovery environment diagnostics.
-- `src/OSR.Upgrade.Worker.ps1`: authorized live preflight, protected recovery point, two-service stop/start, MSI execution, operator acceptance and integrated MSI-based application recovery.
+The design consists of four components:
 
-## Automatic original-MSI discovery (v0.3)
+| Component | Responsibility |
+| --- | --- |
+| `Freshservice_OSR_Upgrade_GUI.ps1` | Graphical interface, user-driven execution, progress, default-on Dry Run, UAC elevation and read-only discovery |
+| `OSR.Upgrade.Core.psm1` | OSR registration, native Freshworks services, Windows Installer package inspection and basic application recovery operations |
+| `OSR.Upgrade.Worker.ps1` | Authorized MSI-based upgrade worker, file recovery point, operational checks and operator approval |
+| `OSR.Recovery.WindowsServerBackup.psm1` | Microsoft backup capability assessment, source/target validation and command planning; **read-only in v0.4** |
 
-The GUI's **Auto-find** function and the worker independently inspect the registered installation source, the selected upgrade package directory, common Downloads directories and earlier application recovery-point folders. They do **not** scan arbitrary disks or download historical software. A candidate is only accepted when it matches the exact installed version and Freshworks MSI identity and is authenticated by vendor signature or an independently supplied SHA-256.
+## Current workflow
 
-The Windows Installer cache is not treated as fully reusable historical installation media.
+**Dry Run:** read-only environment inspection → simulated backup → simulated Freshworks service stops → simulated MSI upgrade → simulated restarts → simulated functional acceptance → simulated rollback choice.
 
-## Recovery readiness
+**Live mode:** UAC → operator approval → version/MSI/service preflight → verified original previous-version MSI → stop Freshworks services → copy OSR files → MSI upgrade → restart Freshworks services → functional acceptance → keep or attempt approved application recovery.
 
-A backup of application files does not revert all changes Windows Installer makes. The application recovery procedure requires a verified original MSI plus a separately validated version-specific uninstall/reinstall/restore sequence.
+**Important:** The Live MSI path has not been validated for all Freshworks versions and is still gated by confirmed prior media and an independently tested version-specific recovery procedure.
 
-Virtualization and Windows Backup checks are **diagnostic only**. They do not prove that a restorable snapshot exists and they cannot enable live deployment on their own. Full-VM restoration needs an independent controller that remains operational after the OSR guest has stopped or been restored. See [Recovery Providers](RECOVERY_PROVIDERS.md).
+## Recovery providers
 
-## Operational states
+The recovery manager will eventually evaluate discovery, planning, backup creation, validation and restoration as independent stages. It must not select a provider solely on `Win32_ComputerSystem.Manufacturer` or other vendor labels.
 
-`PREFLIGHT` → `RECOVERY_DISCOVERY` → `BACKUP` → `INSTALL` → `HEALTH` → `ACCEPTANCE` → `DONE` or an approved `ROLLBACK` decision.
+The Windows Server Backup provider introduced in v0.4 performs only **discovery and non-executing planning**. It reports candidate backup targets but does not mark them safe or restore-ready.
 
-A manual functional test failure offers rollback, not an automatic destructive decision. Declining it records a NOT VALIDATED result.
+The two Freshworks Windows services are `Orchestration Server` and `Orchestration Server - WinRM_SSH`. The native Windows `WinRM` service is not stopped.
 
-**Release status:** Experimental. Cross-platform static checks passed; Windows runtime and version-specific recovery are still to be validated.
+See [Recovery Architecture](RECOVERY_ARCHITECTURE.md), [Recovery Providers](RECOVERY_PROVIDERS.md) and [Roadmap](../ROADMAP.md).
+
+## Verification
+
+GitHub Actions validates PowerShell 5.1 source syntax and runs regression tests for incomplete uninstall registry entries and Windows Server Backup target validation. These tests do not install MSI packages or verify live backup/recovery.
+
+## References
+
+- [Freshworks Orchestration Server setup](https://support.freshservice.com/support/solutions/articles/50000003259-setting-up-the-orchestration-server)
+- [Microsoft Windows Server Backup](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/windows-server-backup-command-reference)
