@@ -45,3 +45,8 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           & .\tests\Test-RegistryDiscovery.ps1
+      - name: Regression tests - Windows Server Backup provider
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tests\Test-WindowsBackupProvider.ps1
