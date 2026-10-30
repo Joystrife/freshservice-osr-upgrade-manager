@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.2 — Registry discovery and privilege indicator (experimental)
+
+- Fixed **Auto-find** failing with `The property 'DisplayName' cannot be found` when unrelated Windows uninstall keys omit `DisplayName` under StrictMode.
+- Optional OSR uninstall fields (InstallSource, InstallLocation and LocalPackage) are now read defensively.
+- Added Windows PowerShell 5.1 regression tests for registry entries with missing fields and ambiguous duplicate OSR records.
+- Added a visible **SESSION: STANDARD USER / SESSION: ADMINISTRATOR** privilege indicator to the GUI header.
+
 ## 0.3.1 — Automatic Administrator elevation (experimental)
 
 - Dry Run remains available in a standard non-elevated Windows PowerShell session.
