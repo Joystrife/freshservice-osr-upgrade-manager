@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.0 — Recovery Provider Manager foundation (experimental)
+
+- Added a standalone read-only Windows Server Backup capability provider.
+- Added the GUI **Check Windows backup** action and automatic diagnostics during Dry Run and Auto-find.
+- Discovers Windows Server Backup command/feature, source volumes and unverified separate fixed-volume backup candidates.
+- Validates destination syntax and prevents plan targets from matching Windows/OSR source volumes.
+- Generates a non-executing Microsoft `wbadmin start backup` plan preview.
+- Added Windows PowerShell 5.1 regression tests and GitHub Actions coverage.
+- Repositioned the project as a lifecycle, backup-planning and recovery manager with recovery providers and an explicit roadmap.
+- **No automated Windows Server Backup execution or WinRE restoration is implemented in this release.**
+
 ## 0.3.2 — Registry discovery and privilege indicator (experimental)
 
 - Fixed **Auto-find** failing with `The property 'DisplayName' cannot be found` when unrelated Windows uninstall keys omit `DisplayName` under StrictMode.
