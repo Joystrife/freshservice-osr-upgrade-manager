@@ -15,6 +15,7 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [Windows.Forms.Application]::EnableVisualStyles()
 Import-Module (Join-Path $PSScriptRoot 'OSR.Upgrade.Core.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'OSR.Recovery.WindowsServerBackup.psm1') -Force
 $script:GuiScriptPath = $PSCommandPath
 $script:RestoringSession = $false
 $script:ElevationStarted = $false
@@ -153,7 +154,8 @@ $form.Controls.Add($script:chkRecovery)
 $script:btnPreflight=New-Button 'Read-only preflight' 25 549 210 38
 $script:btnStart=New-Button 'Start dry run' 244 549 210 38
 $script:btnLogs=New-Button 'Open run folder' 463 549 163 38
-$form.Controls.AddRange(@($script:btnPreflight,$script:btnStart,$script:btnLogs))
+$script:btnBackupCheck=New-Button 'Check Windows backup' 637 549 205 38
+$form.Controls.AddRange(@($script:btnPreflight,$script:btnStart,$script:btnLogs,$script:btnBackupCheck))
 
 $script:lblMode=New-Label 'DRY RUN ACTIVE: only read-only discovery; upgrade, backups and recovery are SIMULATED.' 25 593 965 24
 $script:lblMode.ForeColor=[Drawing.Color]::FromArgb(19,111,85)
@@ -177,7 +179,7 @@ function Set-GuiBusy([bool]$Busy) {
         $script:txtRecoveryRoot,$script:txtSHA,$script:txtPreviousSHA,
         $script:txtMandatory,$script:txtMore,$script:chkDryRun,$script:chkApproval,$script:chkRecovery,
         $script:btnMsi,$script:btnPrevious,$script:btnInstall,$script:btnRecoveryRoot,
-        $script:btnPreflight,$script:btnStart,$script:btnAutoFind)) { $control.Enabled = -not $Busy }
+        $script:btnPreflight,$script:btnStart,$script:btnAutoFind,$script:btnBackupCheck)) { $control.Enabled = -not $Busy }
 }
 function Get-Questions {
     $q=@()
@@ -186,6 +188,24 @@ function Get-Questions {
     $q += @($script:txtMore.Lines | ForEach-Object {$_.Trim()} | Where-Object { $_ })
     return ,$q
 }
+function Get-GuiWindowsBackupAssessment {
+    # Read-only inventory: this function does not run wbadmin or change a backup configuration.
+    $cap = Get-OsrWindowsBackupCapability -InstallDirectory $script:txtInstall.Text.Trim()
+    [void]$script:lstLog.Items.Add('[READ ONLY] Windows backup provider: '+$cap.Status+' | Feature: '+$cap.WindowsFeature)
+    [void]$script:lstLog.Items.Add('[READ ONLY] OSR volume: '+$cap.OsrDrive+' | Windows volume: '+$cap.SystemDrive)
+    if($cap.CandidateTargetCount -eq 0) {
+        [void]$script:lstLog.Items.Add('[READ ONLY] No separate candidate fixed-volume backup target detected. A network share may be an option.')
+    } else {
+        foreach($candidate in @($cap.CandidateTargets)) {
+            $freeGb=[Math]::Round(([double]$candidate.FreeBytes/1GB),1)
+            [void]$script:lstLog.Items.Add('[READ ONLY] Candidate volume: '+$candidate.Drive+' | free: '+$freeGb+' GB | NOT VERIFIED')
+        }
+    }
+    [void]$script:lstLog.Items.Add('[READ ONLY] Full-system recovery requires WinRE or an independently operating recovery controller.')
+    $script:lstLog.TopIndex=[Math]::Max(0,$script:lstLog.Items.Count-1)
+    return $cap
+}
+
 function Find-RecoveryInstallerInGui {
     $app=$null
     try {$app=Get-OsrProduct}
@@ -208,6 +228,8 @@ function Find-RecoveryInstallerInGui {
     [void]$script:lstLog.Items.Add('[READ ONLY] Platform: '+$environment.Machine)
     [void]$script:lstLog.Items.Add('[READ ONLY] '+$environment.WindowsBackup)
     [void]$script:lstLog.Items.Add('[READ ONLY] '+$environment.Message)
+    try { [void](Get-GuiWindowsBackupAssessment) }
+    catch { [void]$script:lstLog.Items.Add('[READ ONLY] Windows Backup assessment unavailable: '+$_.Exception.Message) }
     $script:lstLog.TopIndex=[Math]::Max(0,$script:lstLog.Items.Count-1)
     return $candidate
 }
@@ -468,6 +490,11 @@ function Inspect-DryRunReadOnly {
         elseif($found.Found){Add-DryRunLog 'A previous MSI was found, but authenticity still requires verification.'}
         else{Add-DryRunLog 'No complete previous MSI was found automatically; a full-machine recovery mechanism is not yet integrated.'}
     } catch {Add-DryRunLog ('NOTICE: automatic recovery discovery unavailable: '+$_.Exception.Message)}
+    try {
+        $cap=Get-OsrWindowsBackupCapability -InstallDirectory $script:txtInstall.Text.Trim()
+        Add-DryRunLog ('Windows backup provider: '+$cap.Status+'; '+$cap.CandidateTargetCount+' unverified candidate fixed disks.')
+        Add-DryRunLog 'Windows recovery is NOT automatically ready just because wbadmin is installed.'
+    } catch {Add-DryRunLog ('NOTICE: Windows Backup inventory unavailable: '+$_.Exception.Message)}
     Add-DryRunLog 'Inspection was read-only. Service control, backup, MSI and rollback have not been executed.'
 }
 function Stop-DryRun([string]$Status) {
@@ -592,6 +619,33 @@ $script:poll=New-Object Windows.Forms.Timer
 $script:poll.Interval=900
 $script:poll.Add_Tick({Refresh-Run})
 
+$script:btnBackupCheck.Add_Click({
+    try {
+        $cap=Get-GuiWindowsBackupAssessment
+        $candidates = if ($cap.CandidateTargetCount) {
+            (@($cap.CandidateTargets) | ForEach-Object {
+                ('{0} (free: {1:N1} GB; NOT VERIFIED)' -f $_.Drive,([double]$_.FreeBytes/1GB))
+            }) -join [Environment]::NewLine
+        } else { 'No separate local fixed disk found. An authorized UNC share may be used in a future version.' }
+        $msg = @(
+            ('Windows Server Backup: '+$cap.Status)
+            ('Feature state: '+$cap.WindowsFeature)
+            ('Windows volume: '+$cap.SystemDrive)
+            ('OSR volume: '+$cap.OsrDrive)
+            ''
+            'Possible backup destinations (inspection only):'
+            $candidates
+            ''
+            'This release does not create Windows backups or perform full-system recovery.'
+            'A recovery provider cannot unlock a live upgrade until a valid restoration procedure exists.'
+        ) -join [Environment]::NewLine
+        [void][Windows.Forms.MessageBox]::Show($form,$msg,'Windows backup capability (read-only)',
+            [Windows.Forms.MessageBoxButtons]::OK,[Windows.Forms.MessageBoxIcon]::Information)
+    } catch {
+        [void][Windows.Forms.MessageBox]::Show($form,$_.Exception.Message,'Windows backup discovery',
+            [Windows.Forms.MessageBoxButtons]::OK,[Windows.Forms.MessageBoxIcon]::Warning)
+    }
+})
 $script:btnAutoFind.Add_Click({
     try { [void](Find-RecoveryInstallerInGui) }
     catch {[void][Windows.Forms.MessageBox]::Show($form,$_.Exception.Message,'Recovery discovery')}
