@@ -1,42 +1,29 @@
-# Recovery Provider Architecture
+# Recovery Provider Inventory
 
-## Objective
+This document tracks **implemented functionality**, not the desired end-state.
 
-Reduce operator effort while ensuring that **Recovery Ready** refers to a recovery procedure the application can actually execute and validate, not merely to the presence of files, a backup utility or a virtual machine.
+| Provider | Status | Backup creation | Full restoration |
+| --- | --- | --- | --- |
+| Windows Server Backup | Read-only capability and plan provider introduced in v0.4 | Not implemented | Not implemented; full recovery requires WinRE or an external controller |
+| Original previous OSR MSI | Bounded local discovery + verified original package | Protected OSR file copy; real operation not validated | Application-level MSI recovery logic implemented; requires independent version-specific validation |
+| AWS EC2/EBS | Hardware/platform diagnostic only | Not implemented | Not implemented |
+| Hyper-V | Presence may be detected | Not implemented | Not implemented |
+| VMware | Not implemented | Not implemented | Not implemented |
 
-## Provider A — Verified original MSI + application snapshot (experimental)
+## Provider selection
 
-**Implemented in v0.3.0.** The system attempts read-only discovery of the original previously installed OSR MSI. It verifies the Freshworks product identity and exact installed version and requires either a valid Freshworks Authenticode signature or an independently validated SHA-256.
+A provider can progress through `DISCOVERED`, `PLAN_CREATED`, `BACKUP_COMPLETED`, `RECOVERY_VERIFIED` and `RESTORE_AVAILABLE` states only after the corresponding real operations and evidence checks succeed.
 
-During an authorized live upgrade, the worker stops the two Freshworks services, creates a protected application-file snapshot, copies the original MSI and uses the new MSI. A recovery attempt involves the previous verified MSI, backed-up OSR files and operator confirmation. The procedure is **not** automatically assumed compatible across arbitrary version pairs. An independently validated downgrade remains mandatory.
+A detected backup tool or virtual-machine model does **not** satisfy these checks.
 
-No full-machine, OS registry, service database, external connectivity or virtualization state is reverted by this provider.
+## Windows Server Backup
 
-## Provider B — Hypervisor-level recovery (design target, not implemented)
+The v0.4 module detects an installed Windows Backup feature, queries candidate separate fixed volumes and validates example target syntax. It generates a **command preview only**. It never installs the Windows feature, executes `wbadmin`, creates backup files or changes Windows configuration.
 
-The target architecture uses an authorized **out-of-band controller** running on the virtualization management side (for example a Hyper-V host or a protected management service). This controller would create a production checkpoint *before* upgrade, verify its identity/readiness, and remain running even if the guest OSR VM stops or loses connectivity.
+Microsoft documents `wbadmin start backup` for backup and `wbadmin start sysrecovery` from the recovery console. Consequently, autonomous full-system recovery will require an out-of-guest control mechanism.
 
-In case of a failed application acceptance test, the GUI could request a recovery through that controller. Because restoring a VM may terminate the guest, the controller must own the restore job, provide confirmation after restart and handle loss of the GUI session. A Hyper-V production checkpoint is not an independent long-term backup and must comply with the host's storage and retention policy.
+## Operational design requirement
 
-**No host credentials, VM names, hypervisor addresses or privileged task scheduling are embedded in this repository.** A genuine provider must implement authorization, durable execution, compatibility checks and post-restore verification before it can be treated as ready.
+Only allow a live upgrade when the chosen provider can actually prepare and recover an appropriate point according to an independently validated method. The previous MSI flow remains the only live recovery implementation in v0.4 and is still explicitly gated.
 
-## Provider C — Windows Server Backup (diagnostic only)
-
-The GUI can detect availability of `wbadmin.exe`. This does **not** establish that an appropriate, successful, recent and recoverable system backup exists. An image-based restore can require a recovery environment and may terminate the current OS session. Consequently it is not offered as automatic rollback in v0.3.0.
-
-## Readiness states (target)
-
-| State | Meaning | Upgrade authorization |
-| --- | --- | --- |
-| `DISCOVERED` | Candidate backup/package exists, authenticity or restore path not verified | Block |
-| `VERIFIED` | Components and identity verified but no validated restoration procedure | Block |
-| `RECOVERY_READY` | Approved provider can carry out and verify restore for this version/host | Eligible after authorization |
-| `UNAVAILABLE` | No recoverable provider | Block |
-
-A UI checkbox alone must never turn an unavailable provider into a recoverable provider.
-
-## Sources
-
-- Microsoft: [Hyper-V checkpoints](https://learn.microsoft.com/en-us/windows-server/virtualization/hyper-v/checkpoints)
-- Microsoft: [Windows Installer rollback limitations](https://learn.microsoft.com/en-us/windows/win32/msi/rollback-installation)
-- Microsoft: [`wbadmin`](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/wbadmin)
+[Read the full recovery architecture](RECOVERY_ARCHITECTURE.md).
