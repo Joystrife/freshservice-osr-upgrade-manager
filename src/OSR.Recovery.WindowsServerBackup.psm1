@@ -121,7 +121,7 @@ function Get-OsrWindowsBackupPlan {
         $args.Add('-include:' + $OsrDrive.TrimEnd('\').ToUpperInvariant())
     }
     $preview = 'wbadmin.exe ' + (($args.ToArray() | ForEach-Object {
-        if ($_ -match '\\s') { '"' + $_ + '"' } else { $_ }
+        if ($_ -match '\s') { '"' + $_ + '"' } else { $_ }
     }) -join ' ')
     return [pscustomobject]@{
         Provider = 'WINDOWS_SERVER_BACKUP'
