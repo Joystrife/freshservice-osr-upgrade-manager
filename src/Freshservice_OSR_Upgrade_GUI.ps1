@@ -9,11 +9,15 @@ The application requires an authorized, independently validated vendor downgrade
 path for automated recovery and an authentic prior-version MSI.
 No host/tenant/organization names are embedded in the program.
 #>
+param([string]$ResumeState = '')
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [Windows.Forms.Application]::EnableVisualStyles()
 Import-Module (Join-Path $PSScriptRoot 'OSR.Upgrade.Core.psm1') -Force
+$script:GuiScriptPath = $PSCommandPath
+$script:RestoringSession = $false
+$script:ElevationStarted = $false
 
 $script:ChildProcess = $null
 $script:CurrentRun = $null
@@ -218,8 +222,79 @@ function Protect-RunDirectory([string]$Path) {
     }
     Set-Acl -LiteralPath $Path -AclObject $security
 }
+function Export-GuiResumeState {
+    # Data is transferred in the launch arguments; no temporary file is written.
+    # Do not add credentials, backup secrets, or tokens to this payload.
+    $state = @{
+        FormatVersion = 1
+        NewMsi = [string]$script:txtMsi.Text
+        PreviousMsi = [string]$script:txtPrevious.Text
+        InstallationDirectory = [string]$script:txtInstall.Text
+        RecoveryStorage = [string]$script:txtRecoveryRoot.Text
+        NewMsiSha256 = [string]$script:txtSHA.Text
+        PreviousMsiSha256 = [string]$script:txtPreviousSHA.Text
+        MandatoryTest = [string]$script:txtMandatory.Text
+        AdditionalTests = [string]$script:txtMore.Text
+        MaintenanceApproved = [bool]$script:chkApproval.Checked
+        RecoveryValidated = [bool]$script:chkRecovery.Checked
+    }
+    $json = $state | ConvertTo-Json -Compress -Depth 3
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($json))
+    if ($encoded.Length -gt 16000) {
+        throw 'The current settings are too large to transfer during elevation. Shorten the optional test descriptions.'
+    }
+    return $encoded
+}
+function Restore-GuiResumeState([string]$EncodedState) {
+    if ([string]::IsNullOrWhiteSpace($EncodedState)) { return }
+    if (-not (Test-OsrAdministrator)) {
+        throw 'Administrator elevation did not succeed. Live mode is blocked.'
+    }
+    $json = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($EncodedState))
+    $state = $json | ConvertFrom-Json -ErrorAction Stop
+    if ([int]$state.FormatVersion -ne 1) { throw 'Unsupported elevation state format.' }
+    $script:RestoringSession = $true
+    try {
+        $script:txtMsi.Text = [string]$state.NewMsi
+        $script:txtPrevious.Text = [string]$state.PreviousMsi
+        $script:txtInstall.Text = [string]$state.InstallationDirectory
+        $script:txtRecoveryRoot.Text = [string]$state.RecoveryStorage
+        $script:txtSHA.Text = [string]$state.NewMsiSha256
+        $script:txtPreviousSHA.Text = [string]$state.PreviousMsiSha256
+        $script:txtMandatory.Text = [string]$state.MandatoryTest
+        $script:txtMore.Text = [string]$state.AdditionalTests
+        $script:chkApproval.Checked = [bool]$state.MaintenanceApproved
+        $script:chkRecovery.Checked = [bool]$state.RecoveryValidated
+        $script:chkDryRun.Checked = $false
+        $form.Text = 'Freshservice OSR Upgrade Manager [Administrator]'
+        $script:lblStatus.Text = 'Administrator privileges confirmed. Live mode is available.'
+    } finally {
+        $script:RestoringSession = $false
+    }
+}
+function Request-GuiElevation {
+    if (Test-OsrAdministrator) { return $true }
+    $payload = Export-GuiResumeState
+    $powershellExe = Join-Path $PSHOME 'powershell.exe'
+    $args = '-NoProfile -STA -File "{0}" -ResumeState "{1}"' -f $script:GuiScriptPath,$payload
+    try {
+        $elevated = Start-Process -FilePath $powershellExe -ArgumentList $args -Verb RunAs -PassThru -ErrorAction Stop
+        if (-not $elevated) { throw 'Windows did not return an elevated process.' }
+        $script:ElevationStarted = $true
+        $form.Close()
+        return $false
+    } catch {
+        [void][Windows.Forms.MessageBox]::Show($form,
+            'Administrator approval was cancelled or unavailable. Dry Run remains enabled. No live operation was started.' +
+            [Environment]::NewLine + [Environment]::NewLine + $_.Exception.Message,
+            'Administrator privileges required',
+            [Windows.Forms.MessageBoxButtons]::OK,[Windows.Forms.MessageBoxIcon]::Warning)
+        return $false
+    }
+}
 function New-Run([string]$Mode) {
     if ($script:chkDryRun.Checked) { throw 'Dry Run is active; deployment worker is disabled.' }
+    if (-not (Test-OsrAdministrator)) { throw 'Live operations require an elevated Administrator session.' }
     if($script:ChildProcess -and -not $script:ChildProcess.HasExited){throw 'Another run is already active.'}
     if(-not (Test-Path -LiteralPath $script:WorkerPath)){throw 'Worker script missing.'}
     $questions=Get-Questions
@@ -471,7 +546,7 @@ function Update-GuiMode {
     $script:lblMode.Text=if($dry){
         'DRY RUN ACTIVE: only read-only discovery; upgrade, backups and recovery are SIMULATED.'
     }else{
-        'LIVE MODE: backup, service control, installation and recovery CAN MODIFY THIS SERVER.'
+        'LIVE MODE [ADMINISTRATOR]: backup, service control, installation and recovery CAN MODIFY THIS SERVER.'
     }
     $script:lblMode.ForeColor=if($dry){
         [Drawing.Color]::FromArgb(19,111,85)
@@ -508,12 +583,26 @@ $script:btnAutoFind.Add_Click({
     catch {[void][Windows.Forms.MessageBox]::Show($form,$_.Exception.Message,'Recovery discovery')}
 })
 $script:chkDryRun.Add_CheckedChanged({
-    if($script:DryRunActive){return}
-    if(-not $script:chkDryRun.Checked){
+    if ($script:RestoringSession -or $script:DryRunActive) { return }
+    if (-not $script:chkDryRun.Checked) {
         $selection=[Windows.Forms.MessageBox]::Show($form,
-            'Disable Dry Run? LIVE MODE can stop Windows services, create backups, modify files, and run the MSI. Live deployment also requires explicit approval.',
-            'Switch to live mode',[Windows.Forms.MessageBoxButtons]::YesNo,[Windows.Forms.MessageBoxIcon]::Warning)
-        if($selection -ne [Windows.Forms.DialogResult]::Yes){$script:chkDryRun.Checked=$true;return}
+            'Switch to LIVE MODE? Windows Administrator approval (UAC) is mandatory. Live operations can stop Freshworks services, create backups, modify files, and install the MSI. An approved recovery method and explicit deployment confirmation are also required.',
+            'Administrator privileges required',
+            [Windows.Forms.MessageBoxButtons]::YesNo,[Windows.Forms.MessageBoxIcon]::Warning)
+        if ($selection -ne [Windows.Forms.DialogResult]::Yes) {
+            $script:chkDryRun.Checked = $true
+            return
+        }
+        if (-not (Test-OsrAdministrator)) {
+            try { [void](Request-GuiElevation) }
+            catch {
+                [void][Windows.Forms.MessageBox]::Show($form,$_.Exception.Message,
+                    'Administrator elevation error',
+                    [Windows.Forms.MessageBoxButtons]::OK,[Windows.Forms.MessageBoxIcon]::Error)
+            }
+            if (-not $script:ElevationStarted) { $script:chkDryRun.Checked = $true }
+            return
+        }
     }
     Update-GuiMode
 })
@@ -551,6 +640,21 @@ $form.Add_FormClosing({
         $_.Cancel=$true
     }
 })
+if (-not [string]::IsNullOrWhiteSpace($ResumeState)) {
+    try {
+        Restore-GuiResumeState $ResumeState
+    } catch {
+        $script:chkDryRun.Checked = $true
+        [void][Windows.Forms.MessageBox]::Show($form,
+            'The saved settings could not be restored after elevation. Dry Run remains enabled.' +
+            [Environment]::NewLine + [Environment]::NewLine + $_.Exception.Message,
+            'Resume failed',
+            [Windows.Forms.MessageBoxButtons]::OK,[Windows.Forms.MessageBoxIcon]::Error)
+    }
+}
+if (Test-OsrAdministrator) {
+    $form.Text = 'Freshservice OSR Upgrade Manager [Administrator]'
+}
 Update-GuiMode
 [void]$form.ShowDialog()
 $script:dryTimer.Stop()
