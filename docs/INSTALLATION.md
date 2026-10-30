@@ -7,6 +7,12 @@
 3. **DRY RUN** is checked by default. Select **Start dry run** to simulate service stops, backup, install, validation and recovery without changing the server. Simulated logs stay in memory.
 4. Select **Read-only preflight** or **Auto-find** to inspect the installed OSR, both Freshworks services and locally discoverable original MSI packages.
 
+## Administrator elevation
+
+Dry Run and read-only discovery are available without Administrator privileges. When the operator unchecks **DRY RUN**, the GUI requests approval to enter Live Mode. If the current session is not elevated, Windows User Account Control (UAC) prompts for Administrator access. Upon approval, the application relaunches with its current non-secret form fields restored. If elevation is declined or fails, Dry Run stays enabled and no live operation is started.
+
+The worker independently checks Administrator privileges again before performing any live operation. The application never bypasses UAC or Windows policies.
+
 ## Preparing a real in-place upgrade
 
 1. Download the new official `FO-OSR.msi` from Freshservice.
