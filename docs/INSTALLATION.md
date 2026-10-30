@@ -1,32 +1,51 @@
-# Running Freshservice OSR Upgrade Manager (v0.3.0)
+# Getting Started
 
-## Default: Dry Run (safe exploration)
+## Requirements
 
-1. On Windows, open Windows PowerShell 5.1 with STA support.
-2. Run `powershell.exe -NoProfile -STA -File ".\src\Freshservice_OSR_Upgrade_GUI.ps1"`.
-3. **DRY RUN** is checked by default. Select **Start dry run** to simulate service stops, backup, install, validation and recovery without changing the server. Simulated logs stay in memory.
-4. Select **Read-only preflight** or **Auto-find** to inspect the installed OSR, both Freshworks services and locally discoverable original MSI packages.
+- Windows with interactive Windows PowerShell 5.1 and Windows Forms support.
+- The complete `src/` directory, including both `.psm1` modules and the worker script.
+- Administrator approval for Live Mode. Dry Run and backup capability assessment are read-only.
 
-## Administrator elevation
+## Launch
 
-Dry Run and read-only discovery are available without Administrator privileges. When the operator unchecks **DRY RUN**, the GUI requests approval to enter Live Mode. If the current session is not elevated, Windows User Account Control (UAC) prompts for Administrator access. Upon approval, the application relaunches with its current non-secret form fields restored. If elevation is declined or fails, Dry Run stays enabled and no live operation is started.
+From the repository root:
 
-The worker independently checks Administrator privileges again before performing any live operation. The application never bypasses UAC or Windows policies.
+```powershell
+powershell.exe -NoProfile -STA -File ".\src\Freshservice_OSR_Upgrade_GUI.ps1"
+```
 
-## Preparing a real in-place upgrade
+## Dry Run (recommended first)
 
-1. Download the new official `FO-OSR.msi` from Freshservice.
-2. Select it with **Browse**. Leave the recovery MSI field empty; the live worker will search a bounded set of local directories for the original installer corresponding to the installed version.
-3. If automatic discovery cannot find a complete trusted package, use the recovery MSI Browse field to choose an independently authenticated original installer. The Windows Installer cache is not accepted as a complete recovery source.
-4. Confirm the detected existing installation directory. The recovery storage path must be outside it.
-5. Independently validate the procedure for the specific pair of OSR versions and obtain maintenance authorization.
-6. Disable Dry Run deliberately, run preflight and confirm the required approvals before starting the real upgrade.
-7. The worker stops **Orchestration Server - WinRM_SSH** and **Orchestration Server**, creates an application-file backup, performs the MSI upgrade, restarts the two services and prompts for Freshservice functional tests. The native Windows WinRM service is never stopped.
+1. Leave the **DRY RUN** box checked (default).
+2. Optionally select the official `FO-OSR.msi` with Browse.
+3. Select **Read-only preflight** or **Start dry run**.
+4. Review the in-memory activity log and experiment with functional test responses.
+5. No services are stopped, no MSI is launched, and no recovery files are created.
 
-## Recovery
+## Check Windows backup — v0.4.0
 
-The application contains a version-specific MSI recovery sequence. This is **not** equivalent to full Windows or virtual-machine restoration, and requires an independently validated downgrade procedure. It blocks live upgrades when no original verified recovery MSI or validated recovery path is available.
+1. Select **Check Windows backup**.
+2. Read the status of the Windows Server Backup command and Windows feature.
+3. Review the Windows and OSR source volumes and any candidate separate fixed volumes.
+4. Note that candidate disks are **NOT VERIFIED** backup destinations and that the check does not run `wbadmin`.
+5. The result does not authorize a live upgrade or establish a complete system rollback.
 
-The GUI can inspect virtualization information and the presence of Windows Server Backup tooling, but **cannot create or apply full-machine snapshots** in this release. See [Recovery Providers](RECOVERY_PROVIDERS.md).
+The same capability assessment is logged automatically during **Auto-find** and the Dry Run read-only inspection.
 
-**Status:** Development preview. Neither the graphical Windows runtime nor production recovery has been independently tested by this project.
+## Auto-find
+
+The **Auto-find** action reads OSR MSI registration and searches a bounded set of installer locations for a complete original MSI matching the installed version. If none is discovered, that does not mean the OSR version is missing; it means no eligible old installer was found in the inspected locations.
+
+## Live mode and UAC
+
+Uncheck DRY RUN and confirm. If the current Windows session is not elevated, the application triggers an ordinary Windows User Account Control prompt. If elevation succeeds, the GUI reopens with its non-secret form settings. If elevation is declined, the original GUI stays in Dry Run.
+
+The existing live workflow still requires a verified original MSI and an independently tested application-level restoration procedure. Windows Server Backup detection cannot bypass this gate.
+
+**Do not use the experimental Live Mode in production until the relevant Freshworks version upgrade and recovery paths have been tested.**
+
+## More information
+
+- [Technical Design](DESIGN.md)
+- [Recovery Architecture](RECOVERY_ARCHITECTURE.md)
+- [Roadmap](../ROADMAP.md)
