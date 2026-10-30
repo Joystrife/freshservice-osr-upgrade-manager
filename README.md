@@ -19,6 +19,10 @@ The initial version targets **in-place upgrades** of an existing Windows Orchest
 
 An automatic downgrade is **not included**. Recovery requires an approved, independently tested script and restorable configuration. A successful MSI result does not by itself establish functional success.
 
+## Publication status
+
+The GUI script is being prepared for its first public commit. The documentation is available now; the executable source has not yet been uploaded to `src/`. Do not treat this repository as a downloadable production tool until that source is published and tested on Windows.
+
 ## Requirements
 
 - Authorized elevated Windows PowerShell 5.1 interactive session (STA)
