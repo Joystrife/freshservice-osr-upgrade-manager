@@ -1,17 +1,17 @@
-# V3 User Guide
+# 0.5.0 User Guide
 
-V3 (`v0.4.1-v3-preview`) is an experimental source release of Freshservice OSR Upgrade Manager. Start with Dry Run. A completed simulation is not proof that a real operation is ready or recoverable.
+Version 0.5.0 is an experimental source and portable executable release of Freshservice OSR Upgrade Manager. Start with Dry Run. A completed simulation is not proof that a real operation is ready or recoverable.
 
 ![Application workflow](images/workflow.svg)
 
 ## 1. Download and start
 
-1. Open the project's GitHub Releases page and download `OSR-Upgrade-Manager-V3-source.zip`.
-2. Extract the entire ZIP into a new local folder. Do not run it inside the archive or mix scripts from different releases.
+1. Open the project's GitHub Releases page and download `OSR-Upgrade-Manager-0.5.0-source.zip` or `OSR-Upgrade-Manager-0.5.0-portable.exe`.
+2. For the EXE, follow [Portable Executable](PORTABLE_EXECUTABLE.md) and double-click it. For source, extract the entire ZIP into a new local folder. Do not run it inside the archive or mix scripts from different releases.
 3. Double-click `Start-Manager.cmd`. Keep the `src` folder beside it.
-4. Confirm the window title contains **V3 Preview**, Operation is **Upgrade**, and **DRY RUN** is checked.
+4. Confirm the window title contains **0.5.0**, **Diagnostic** is selected, and **DRY RUN** is checked. Select **Lab repair** or **Upgrade** to reveal its specific inputs. Expand **Advanced options** for recovery media, hashes and acceptance checks.
 
-The launcher uses the Windows-provided Windows PowerShell 5.1 and Windows Forms, with a process-scoped RemoteSigned policy. It does not install PowerShell or change persistent execution policy. Organization-enforced policy still takes precedence. A native EXE is not part of this release.
+The launcher uses the Windows-provided Windows PowerShell 5.1 and Windows Forms, with a process-scoped RemoteSigned policy. It does not install PowerShell or change persistent execution policy. Organization-enforced policy still takes precedence. The portable EXE embeds the same runtime scripts and uses the same PowerShell policy boundary.
 
 For manual startup from the extracted folder:
 
@@ -25,7 +25,7 @@ Dry Run does not require an administrator token. Live operations require an elev
 
 | Control | Meaning |
 | --- | --- |
-| Operation | **Upgrade** for a strictly newer MSI; **Lab Repair (same version)** for the bounded lab test |
+| Operation tabs | **Diagnostic** for read-only inspection; **Upgrade** for a strictly newer MSI; **Lab repair** for the bounded same-version lab test |
 | Lab guest computer name | The Windows name inside the guest, not the Hyper-V display name; required for live Lab Repair |
 | New FO-OSR.msi | Original Freshworks installer to inspect or use |
 | Recovery MSI | Original media matching the installed version for Upgrade; Lab Repair uses the selected same-version MSI |

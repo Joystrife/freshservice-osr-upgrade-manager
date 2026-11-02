@@ -5,11 +5,15 @@ on:
     paths:
       - 'src/**'
       - 'tests/**'
+      - 'scripts/**'
+      - 'launcher/**'
       - '.github/workflows/powershell-syntax.yml'
   pull_request:
     paths:
       - 'src/**'
       - 'tests/**'
+      - 'scripts/**'
+      - 'launcher/**'
       - '.github/workflows/powershell-syntax.yml'
 
 jobs:
@@ -71,3 +75,6 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           & .\tests\Test-GuiLabMode.ps1
+      - name: Regression tests - portable executable
+        shell: powershell
+        run: .\tests\Test-PortableExecutable.ps1

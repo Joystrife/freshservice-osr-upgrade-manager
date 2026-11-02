@@ -1,6 +1,6 @@
-# Smart Application Backup - v0.5 Development Plan
+# Smart Application Backup - Future Development Plan
 
-Status: design and development preparation only. The v0.4.1 V3 preview adds experimental lab installation-file capture/restoration to the v0.4 foundation; the complete Smart Application Backup provider below is not implemented. Names and contracts below are proposed, not exported commands.
+Status: design and development preparation only. Version 0.5.0 was assigned to Workspace and portable packaging; the full provider scope described here remains a future milestone. The v0.4.1 V3 preview adds experimental lab installation-file capture/restoration to the v0.4 foundation; the complete Smart Application Backup provider below is not implemented. Names and contracts below are proposed, not exported commands.
 
 ## Objective and boundaries
 

@@ -18,7 +18,7 @@ Import-Module (Join-Path $PSScriptRoot 'OSR.Upgrade.Core.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'OSR.Recovery.WindowsServerBackup.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'OSR.Recovery.LabFiles.psm1') -Force
 $script:GuiScriptPath = $PSCommandPath
-$script:ApplicationTitle = 'Freshservice OSR Upgrade Manager - V3 Preview'
+$script:ApplicationTitle = 'Freshservice OSR Upgrade Manager - 0.5.0'
 $script:RestoringSession = $false
 $script:ElevationStarted = $false
 
@@ -36,44 +36,82 @@ $script:LabRunBase = Join-Path $env:SystemDrive 'OSRLab\Runs'
 $script:RunBase = $script:UpgradeRunBase
 $script:WorkerPath = Join-Path $PSScriptRoot 'OSR.Upgrade.Worker.ps1'
 
-$form = New-Object Windows.Forms.Form
-$form.Text = $script:ApplicationTitle
-$form.Size = New-Object Drawing.Size(1030,868)
-$form.MinimumSize = New-Object Drawing.Size(990,875)
-$form.StartPosition = 'CenterScreen'
-$form.Font = New-Object Drawing.Font('Segoe UI',9)
-$form.BackColor = [Drawing.Color]::FromArgb(247,249,250)
+$script:WorkspaceDiagnostic=$true
+$script:WorkspaceAdvanced=$false
+$script:WorkspaceBusy=$false
+$script:WorkspaceReady=$false
+$form=New-Object Windows.Forms.Form
+$form.Text=$script:ApplicationTitle
+$form.Size=New-Object Drawing.Size(1060,850)
+$form.MinimumSize=New-Object Drawing.Size(850,720)
+$form.StartPosition='CenterScreen'
+$form.Font=New-Object Drawing.Font('Segoe UI',9)
+$form.BackColor=[Drawing.Color]::FromArgb(245,247,248)
+$script:WorkspaceAccent=[Drawing.Color]::FromArgb(8,107,103)
 
 function New-Label([string]$Text,[int]$X,[int]$Y,[int]$Width,[int]$Height) {
-    $c = New-Object Windows.Forms.Label
-    $c.Text=$Text; $c.Location=New-Object Drawing.Point($X,$Y)
-    $c.Size=New-Object Drawing.Size($Width,$Height)
+    $c=New-Object Windows.Forms.Label
+    $c.Text=$Text; $c.SetBounds($X,$Y,$Width,$Height)
+    $c.ForeColor=[Drawing.Color]::FromArgb(35,55,63)
     return $c
 }
 function New-Button([string]$Text,[int]$X,[int]$Y,[int]$Width,[int]$Height) {
-    $c = New-Object Windows.Forms.Button
-    $c.Text=$Text; $c.Location=New-Object Drawing.Point($X,$Y)
-    $c.Size=New-Object Drawing.Size($Width,$Height)
+    $c=New-Object Windows.Forms.Button
+    $c.Text=$Text; $c.SetBounds($X,$Y,$Width,$Height)
+    $c.FlatStyle='Flat'; $c.FlatAppearance.BorderColor=[Drawing.Color]::FromArgb(207,219,223)
+    $c.BackColor=[Drawing.Color]::White
+    $c.ForeColor=[Drawing.Color]::FromArgb(35,55,63)
     return $c
 }
 function New-TextBox([int]$X,[int]$Y,[int]$Width,[int]$Height) {
     $c=New-Object Windows.Forms.TextBox
-    $c.Location=New-Object Drawing.Point($X,$Y)
-    $c.Size=New-Object Drawing.Size($Width,$Height)
+    $c.SetBounds($X,$Y,$Width,$Height)
     return $c
 }
+$script:workspaceHeader=New-Object Windows.Forms.Panel
+$script:workspaceHeader.Dock='Top'; $script:workspaceHeader.Height=120
+$script:workspaceHeader.BackColor=[Drawing.Color]::White
+$form.Controls.Add($script:workspaceHeader)
+$title=New-Label 'OSR Upgrade Manager' 20 10 650 31
+$title.Font=New-Object Drawing.Font('Segoe UI Semibold',18)
+$title.ForeColor=$script:WorkspaceAccent
+$subtitle=New-Label 'Freshservice | Version 0.5.0 | Compact workspace' 22 43 650 20
+$script:lblPrivilege=New-Label 'Checking Windows token...' 720 20 300 24
+$script:lblPrivilege.TextAlign='MiddleRight'
+$script:lblPrivilege.Anchor='Top, Right'
+$script:workspaceHeader.Controls.AddRange(@($title,$subtitle,$script:lblPrivilege))
+$script:modePanel=New-Object Windows.Forms.Panel
+$script:modePanel.SetBounds(20,68,1004,48)
+$script:modePanel.Anchor='Top, Left, Right'
+$script:modePanel.BackColor=[Drawing.Color]::FromArgb(231,244,240)
+$script:workspaceHeader.Controls.Add($script:modePanel)
+$script:chkDryRun=New-Object Windows.Forms.CheckBox
+$script:chkDryRun.Text='DRY RUN | Simulate operations'
+$script:chkDryRun.SetBounds(10,2,950,23)
+$script:chkDryRun.Checked=$true
+$script:chkDryRun.Font=New-Object Drawing.Font('Segoe UI Semibold',9)
+$script:chkDryRun.ForeColor=$script:WorkspaceAccent
+$script:lblMode=New-Label '' 10 25 975 20
+$script:lblMode.Anchor='Top, Left, Right'
+$script:modePanel.Controls.AddRange(@($script:chkDryRun,$script:lblMode))
+$script:workspaceCanvas=New-Object Windows.Forms.Panel
+$script:workspaceCanvas.Dock='Fill'
+$script:workspaceCanvas.AutoScroll=$true
+$form.Controls.Add($script:workspaceCanvas)
+$script:workspaceCanvas.BringToFront()
+
 function Add-Row([string]$Label,[int]$Y,[string]$Variable,[bool]$Folder=$false) {
-    $form.Controls.Add((New-Label $Label 25 $Y 246 24))
-    $text=New-TextBox 270 ($Y-2) 590 26
-    $browse=New-Button 'Browse...' 870 ($Y-3) 109 30
-    $form.Controls.AddRange(@($text,$browse))
+    $labelControl=New-Label $Label 0 0 700 20
+    $text=New-TextBox 0 0 590 26
+    $browse=New-Button 'Browse...' 0 0 96 28
+    $script:workspaceCanvas.Controls.AddRange(@($labelControl,$text,$browse))
+    Set-Variable -Name ('lbl'+$Variable) -Value $labelControl -Scope Script
     Set-Variable -Name ('txt'+$Variable) -Value $text -Scope Script
     Set-Variable -Name ('btn'+$Variable) -Value $browse -Scope Script
     if ($Folder) {
         $browse.Add_Click({
             $d=New-Object Windows.Forms.FolderBrowserDialog
-            $d.Description='Select a directory'
-            $d.ShowNewFolderButton=$true
+            $d.Description='Select a directory'; $d.ShowNewFolderButton=$true
             if(Test-Path -LiteralPath $text.Text -PathType Container){$d.SelectedPath=$text.Text}
             if($d.ShowDialog($form) -eq [Windows.Forms.DialogResult]::OK){$text.Text=$d.SelectedPath}
             $d.Dispose()
@@ -88,150 +126,193 @@ function Add-Row([string]$Label,[int]$Y,[string]$Variable,[bool]$Folder=$false) 
         }.GetNewClosure())
     }
 }
-
-$title=New-Label 'Freshservice OSR Upgrade Manager' 25 15 950 38
-$title.Font=New-Object Drawing.Font('Segoe UI Semibold',19)
-$title.ForeColor=[Drawing.Color]::FromArgb(18,87,71)
-$form.Controls.Add($title)
-$subtitle=New-Label 'Auto-discovery  |  Integrated recovery  |  Controlled deployment  |  Manual acceptance' 26 56 720 22
-$subtitle.ForeColor=[Drawing.Color]::FromArgb(83,100,110)
-$form.Controls.Add($subtitle)
-$script:lblPrivilege=New-Label 'Checking Windows token...' 750 56 228 22
-$script:lblPrivilege.TextAlign='MiddleRight'
-$script:lblPrivilege.Font=New-Object Drawing.Font('Segoe UI Semibold',9)
-$form.Controls.Add($script:lblPrivilege)
-
-Add-Row 'New FO-OSR.msi' 104 'Msi'
-Add-Row 'Recovery MSI (auto-detect)' 145 'Previous'
-Add-Row 'Existing installation directory' 186 'Install' $true
-Add-Row 'Recovery storage directory' 227 'RecoveryRoot' $true
-$script:txtRecoveryRoot.Text = $script:RunBase
-try { $script:txtInstall.Text = Get-OsrInstallDirectory }
-catch { $script:txtInstall.Text = Join-Path $env:ProgramFiles 'Freshworks\Orchestration Server' }
-
-$lblSHA = New-Label 'Approved SHA-256 (if MSI unsigned)' 25 270 250 23
-$form.Controls.Add($lblSHA)
-$script:txtSHA = New-TextBox 270 268 709 25
-$form.Controls.Add($script:txtSHA)
-
-$lblPrevSHA=New-Label 'Recovery MSI SHA-256 (if unsigned)' 25 303 250 24
-$form.Controls.Add($lblPrevSHA)
-$script:txtPreviousSHA=New-TextBox 270 301 709 25
-$form.Controls.Add($script:txtPreviousSHA)
-# Automatically locate an original older MSI without requiring a manual download.
-$script:txtPrevious.Width=498
-$script:btnAutoFind=New-Button 'Auto-find' 777 141 82 30
-$form.Controls.Add($script:btnAutoFind)
-
-$lblMandatory=New-Label 'Required functional test' 25 343 246 24
-$form.Controls.Add($lblMandatory)
-$script:txtMandatory=New-TextBox 270 341 709 26
-$script:txtMandatory.Text='Does a native Freshservice orchestration action succeed on a known-working target?'
-$form.Controls.Add($script:txtMandatory)
-$lblMore=New-Label 'Additional tests (one per line)' 25 378 250 25
-$form.Controls.Add($lblMore)
-$script:txtMore=New-TextBox 270 377 709 64
-$script:txtMore.Multiline=$true
-$script:txtMore.ScrollBars='Vertical'
-$form.Controls.Add($script:txtMore)
-
-$script:chkDryRun=New-Object Windows.Forms.CheckBox
-$script:chkDryRun.Text='DRY RUN - Simulate the complete workflow (no system changes; logs in memory only)'
-$script:chkDryRun.Location=New-Object Drawing.Point(26,447)
-$script:chkDryRun.Size=New-Object Drawing.Size(940,25)
-$script:chkDryRun.Checked=$true
-$script:chkDryRun.Font=New-Object Drawing.Font('Segoe UI Semibold',10)
-$script:chkDryRun.ForeColor=[Drawing.Color]::FromArgb(17,100,87)
-$form.Controls.Add($script:chkDryRun)
-
-$script:chkApproval=New-Object Windows.Forms.CheckBox
-$script:chkApproval.Text='I confirm the approved maintenance window and authorized production change.'
-$script:chkApproval.Location=New-Object Drawing.Point(26,479)
-$script:chkApproval.Size=New-Object Drawing.Size(940,24)
-$form.Controls.Add($script:chkApproval)
-$script:chkRecovery=New-Object Windows.Forms.CheckBox
-$script:chkRecovery.Text='I confirm the downgrade/recovery procedure for these OSR versions was independently tested.'
-$script:chkRecovery.Location=New-Object Drawing.Point(26,505)
-$script:chkRecovery.Size=New-Object Drawing.Size(940,24)
-$form.Controls.Add($script:chkRecovery)
-
-$script:btnPreflight=New-Button 'Read-only preflight' 25 549 210 38
-$script:btnStart=New-Button 'Start dry run' 244 549 210 38
-$script:btnLogs=New-Button 'Open run folder' 463 549 163 38
-$script:btnBackupCheck=New-Button 'Check Windows backup' 637 549 205 38
-$form.Controls.AddRange(@($script:btnPreflight,$script:btnStart,$script:btnLogs,$script:btnBackupCheck))
-
-$script:lblMode=New-Label 'DRY RUN ACTIVE: only read-only discovery; upgrade, backups and recovery are SIMULATED.' 25 593 965 24
-$script:lblMode.ForeColor=[Drawing.Color]::FromArgb(19,111,85)
-$form.Controls.Add($script:lblMode)
-$script:lblStatus=New-Label 'Ready. Dry Run is enabled by default.' 25 620 955 26
-$form.Controls.Add($script:lblStatus)
-$script:progress=New-Object Windows.Forms.ProgressBar
-$script:progress.Location=New-Object Drawing.Point(25,650)
-$script:progress.Size=New-Object Drawing.Size(954,17)
-$script:progress.Style='Continuous'
-$form.Controls.Add($script:progress)
-$script:lstLog=New-Object Windows.Forms.ListBox
-$script:lstLog.Location=New-Object Drawing.Point(25,683)
-$script:lstLog.Size=New-Object Drawing.Size(954,128)
-$script:lstLog.HorizontalScrollbar=$true
-$script:lstLog.SelectionMode='MultiExtended'
-$script:lstLog.IntegralHeight=$false
-$script:lstLog.Font=New-Object Drawing.Font('Consolas',9)
-$form.Controls.Add($script:lstLog)
-
-# Leave room for an explicit operation selector without overlapping existing rows.
-foreach ($control in $form.Controls) {
-    if ($control.Top -ge 90) { $control.Top += 40 }
-}
-$form.Size = New-Object Drawing.Size(1030,930)
-$form.MinimumSize = New-Object Drawing.Size(990,875)
-$form.AutoScroll = $true
-$form.Controls.Add((New-Label 'Operation' 25 88 240 24))
-$script:cboOperation = New-Object Windows.Forms.ComboBox
-$script:cboOperation.DropDownStyle = 'DropDownList'
-$script:cboOperation.Location = New-Object Drawing.Point(270,85)
-$script:cboOperation.Size = New-Object Drawing.Size(248,26)
+Add-Row 'Existing OSR installation' 0 'Install' $true
+Add-Row 'Target MSI' 0 'Msi'
+Add-Row 'Recovery MSI (auto-detect)' 0 'Previous'
+Add-Row 'Recovery storage' 0 'RecoveryRoot' $true
+$script:txtRecoveryRoot.Text=$script:RunBase
+try { $script:txtInstall.Text=Get-OsrInstallDirectory }
+catch { $script:txtInstall.Text=Join-Path $env:ProgramFiles 'Freshworks\Orchestration Server' }
+$script:cboOperation=New-Object Windows.Forms.ComboBox
+$script:cboOperation.DropDownStyle='DropDownList'
 [void]$script:cboOperation.Items.Add('Upgrade')
 [void]$script:cboOperation.Items.Add('Lab Repair (same version)')
-$script:cboOperation.SelectedIndex = 0
-$form.Controls.Add($script:cboOperation)
-$script:lblLabComputer = New-Label 'Lab guest computer name' 535 88 195 24
-$script:txtLabComputer = New-TextBox 740 85 239 26
-$form.Controls.AddRange(@($script:lblLabComputer,$script:txtLabComputer))
-
-# Stretch input rows horizontally and give additional vertical space to logs.
-$form.Size = New-Object Drawing.Size(1030,970)
-foreach ($control in $form.Controls) {
-    if ($control -is [Windows.Forms.TextBox] -or $control -is [Windows.Forms.CheckBox]) {
-        $control.Anchor = 'Top, Left, Right'
-    }
+$script:cboOperation.SelectedIndex=0
+# Internal operation binding retained for the existing worker and UAC payload.
+$script:cboOperation.Visible=$false
+$script:cboOperation.TabStop=$false
+$script:workspaceCanvas.Controls.Add($script:cboOperation)
+$script:workspaceTabs=@()
+foreach($caption in @('Diagnostic','Lab repair | Experimental','Upgrade')) {
+    $tab=New-Button $caption 0 0 200 34
+    $tab.TabIndex=$script:workspaceTabs.Count
+    $script:workspaceTabs+=,$tab
+    $script:workspaceCanvas.Controls.Add($tab)
 }
-foreach ($control in @($script:btnMsi,$script:btnPrevious,$script:btnInstall,$script:btnRecoveryRoot,$script:btnAutoFind,$script:lblPrivilege)) {
-    $control.Anchor = 'Top, Right'
-}
-foreach ($control in @($title,$subtitle,$script:lblMode,$script:lblStatus,$script:progress)) {
-    $control.Anchor = 'Top, Left, Right'
-}
-$script:logPanel = New-Object Windows.Forms.Panel
-$script:logPanel.Location = New-Object Drawing.Point(25,723)
-$script:logPanel.Size = New-Object Drawing.Size(954,168)
-$script:logPanel.Anchor = 'Top, Bottom, Left, Right'
-$form.Controls.Add($script:logPanel)
-$script:lstLog.Dock = 'Fill'
+$script:lblWorkspaceTitle=New-Label '' 0 0 950 25
+$script:lblWorkspaceTitle.Font=New-Object Drawing.Font('Segoe UI Semibold',12)
+$script:lblWorkspaceNote=New-Label '' 0 0 950 34
+$script:workspaceCanvas.Controls.AddRange(@($script:lblWorkspaceTitle,$script:lblWorkspaceNote))
+$script:lblLabComputer=New-Label 'Lab guest computer name' 0 0 500 20
+$script:txtLabComputer=New-TextBox 0 0 400 26
+$script:btnAdvanced=New-Button 'Advanced options >' 0 0 170 28
+$script:btnAutoFind=New-Button 'Auto-find' 0 0 90 28
+$lblSHA=New-Label 'Approved SHA-256 (unsigned target MSI only)' 0 0 500 20
+$script:txtSHA=New-TextBox 0 0 500 26
+$lblPrevSHA=New-Label 'Recovery SHA-256 (unsigned MSI only)' 0 0 500 20
+$script:txtPreviousSHA=New-TextBox 0 0 500 26
+$lblMandatory=New-Label 'Required acceptance check' 0 0 500 20
+$script:txtMandatory=New-TextBox 0 0 700 26
+$script:txtMandatory.Text='Does a native Freshservice orchestration action succeed on a known-working target?'
+$lblMore=New-Label 'Additional checks (one per line)' 0 0 500 20
+$script:txtMore=New-TextBox 0 0 700 54
+$script:txtMore.Multiline=$true; $script:txtMore.ScrollBars='Vertical'
+$script:chkApproval=New-Object Windows.Forms.CheckBox
+$script:chkRecovery=New-Object Windows.Forms.CheckBox
+$script:chkApproval.Size=New-Object Drawing.Size(950,24)
+$script:chkRecovery.Size=New-Object Drawing.Size(950,24)
+$script:btnPreflight=New-Button 'Read-only preflight' 0 0 170 34
+$script:btnStart=New-Button 'Start dry run' 0 0 170 34
+$script:btnStart.BackColor=$script:WorkspaceAccent
+$script:btnStart.ForeColor=[Drawing.Color]::White
+$script:btnLogs=New-Button 'Open run folder' 0 0 125 34
+$script:btnBackupCheck=New-Button 'Check Windows backup' 0 0 184 34
+$script:lblStatus=New-Label 'Ready. Dry Run is enabled by default.' 0 0 950 34
+$script:progress=New-Object Windows.Forms.ProgressBar
+$script:progress.Style='Continuous'
+$script:workspaceCanvas.Controls.AddRange(@($script:lblLabComputer,$script:txtLabComputer,$script:btnAdvanced,$script:btnAutoFind,
+    $lblSHA,$script:txtSHA,$lblPrevSHA,$script:txtPreviousSHA,$lblMandatory,$script:txtMandatory,$lblMore,$script:txtMore,
+    $script:chkApproval,$script:chkRecovery,$script:btnPreflight,$script:btnStart,$script:btnLogs,$script:btnBackupCheck,$script:lblStatus,$script:progress))
+$script:logPanel=New-Object Windows.Forms.Panel
+$script:workspaceCanvas.Controls.Add($script:logPanel)
+$script:lstLog=New-Object Windows.Forms.ListBox
+$script:lstLog.Dock='Fill'; $script:lstLog.IntegralHeight=$false
+$script:lstLog.HorizontalScrollbar=$true; $script:lstLog.SelectionMode='MultiExtended'
+$script:lstLog.Font=New-Object Drawing.Font('Consolas',9)
 $script:logPanel.Controls.Add($script:lstLog)
-$script:logToolbar = New-Object Windows.Forms.ToolStrip
-$script:logToolbar.GripStyle = 'Hidden'
-$script:logToolbar.Dock = 'Top'
-$script:btnCopySelectedLogs = New-Object Windows.Forms.ToolStripButton('Copy selected')
-$script:btnCopyAllLogs = New-Object Windows.Forms.ToolStripButton('Copy all logs')
-$script:lblLogCopy = New-Object Windows.Forms.ToolStripLabel('Ctrl+C: copy selected | Ctrl+A: select all')
-[void]$script:logToolbar.Items.Add($script:btnCopySelectedLogs)
+$script:logToolbar=New-Object Windows.Forms.ToolStrip
+$script:logToolbar.GripStyle='Hidden'; $script:logToolbar.Dock='Top'
+$script:btnCopySelectedLogs=New-Object Windows.Forms.ToolStripButton('Copy selected')
+$script:btnCopyAllLogs=New-Object Windows.Forms.ToolStripButton('Copy all logs')
+$script:lblLogCopy=New-Object Windows.Forms.ToolStripLabel('Activity log | Ctrl+C: copy selected | Ctrl+A: select all')
 [void]$script:logToolbar.Items.Add($script:btnCopyAllLogs)
+[void]$script:logToolbar.Items.Add($script:btnCopySelectedLogs)
 [void]$script:logToolbar.Items.Add((New-Object Windows.Forms.ToolStripSeparator))
 [void]$script:logToolbar.Items.Add($script:lblLogCopy)
 $script:logPanel.Controls.Add($script:logToolbar)
 $script:lstLog.BringToFront()
+$tabIndex=3
+foreach($control in @($script:txtInstall,$script:btnInstall,$script:txtMsi,$script:btnMsi,
+    $script:txtLabComputer,$script:txtRecoveryRoot,$script:btnRecoveryRoot,$script:btnAdvanced,
+    $script:txtPrevious,$script:btnAutoFind,$script:btnPrevious,$script:txtSHA,$script:txtPreviousSHA,
+    $script:txtMandatory,$script:txtMore,$script:chkApproval,$script:chkRecovery,
+    $script:btnPreflight,$script:btnStart,$script:btnBackupCheck,$script:btnLogs,$script:logPanel)){
+    $control.TabIndex=$tabIndex; $tabIndex++
+}
+
+function Set-WorkspaceField($Label,$Text,$Button,[int]$X,[int]$Y,[int]$Width) {
+    $Label.SetBounds($X,$Y,$Width,19)
+    $textWidth=if($Button){$Width-104}else{$Width}
+    $Text.SetBounds($X,($Y+21),$textWidth,26)
+    if($Button){$Button.SetBounds(($X+$Width-96),($Y+19),96,28)}
+}
+function Update-WorkspaceLayout {
+    if(-not $script:WorkspaceReady){return}
+    $canvas=$script:workspaceCanvas
+    $canvas.SuspendLayout()
+    try {
+        # Use display coordinates so toggles do not corrupt a scrolled layout.
+        $scrollY=$canvas.AutoScrollPosition.Y
+        $width=[Math]::Max(770,$canvas.ClientSize.Width-40)
+        $half=[int](($width-18)/2)
+        $y=12+$scrollY
+        for($i=0;$i -lt 3;$i++){
+            $w=[int](($width-12)/3)
+            $script:workspaceTabs[$i].SetBounds((20+$i*($w+6)),$y,$w,34)
+            $selected=if($i -eq 0){$script:WorkspaceDiagnostic}elseif($i -eq 1){-not $script:WorkspaceDiagnostic -and (Get-GuiOperation) -eq 'LabRepair'}else{-not $script:WorkspaceDiagnostic -and (Get-GuiOperation) -eq 'Upgrade'}
+            $script:workspaceTabs[$i].BackColor=if($selected){[Drawing.Color]::FromArgb(218,239,234)}else{[Drawing.Color]::White}
+            $script:workspaceTabs[$i].ForeColor=if($selected){$script:WorkspaceAccent}else{[Drawing.Color]::FromArgb(35,55,63)}
+            $script:workspaceTabs[$i].AccessibleDescription=if($selected){'Selected operation'}else{'Select operation; enables Dry Run and clears live approvals'}
+        }
+        $y+=48
+        $lab=(Get-GuiOperation) -eq 'LabRepair'
+        $diagnostic=$script:WorkspaceDiagnostic
+        $advanced=$script:WorkspaceAdvanced
+        $script:lblWorkspaceTitle.Text=if($diagnostic){'Read-only diagnostic'}elseif($lab){'Same-version lab repair'}else{'Upgrade to a newer OSR version'}
+        $script:lblWorkspaceTitle.SetBounds(20,$y,$width,25); $y+=28
+        $script:lblWorkspaceNote.Text=if($diagnostic){'Inspect the installation without service control, backup, MSI or recovery execution.'}elseif($lab){'Experimental file restoration. Live tests require the exact Hyper-V guest and a host-side checkpoint.'}else{'Live upgrade requires trusted media and an independently tested recovery procedure.'}
+        $script:lblWorkspaceNote.SetBounds(20,$y,$width,34); $y+=38
+        Set-WorkspaceField $script:lblInstall $script:txtInstall $script:btnInstall 20 $y $width; $y+=56
+        foreach($c in @($script:lblMsi,$script:txtMsi,$script:btnMsi,$script:lblRecoveryRoot,$script:txtRecoveryRoot,$script:btnRecoveryRoot)){$c.Visible=-not $diagnostic}
+        if(-not $diagnostic){
+            $script:lblMsi.Text=if($lab){'Same-version MSI'}else{'New-version MSI'}
+            Set-WorkspaceField $script:lblMsi $script:txtMsi $script:btnMsi 20 $y $width; $y+=56
+            if($lab){
+                Set-WorkspaceField $script:lblLabComputer $script:txtLabComputer $null 20 $y $half
+                Set-WorkspaceField $script:lblRecoveryRoot $script:txtRecoveryRoot $script:btnRecoveryRoot (38+$half) $y $half
+            }else{Set-WorkspaceField $script:lblRecoveryRoot $script:txtRecoveryRoot $script:btnRecoveryRoot 20 $y $width}
+            $y+=56
+        }
+        $script:lblLabComputer.Visible=$lab -and -not $diagnostic
+        $script:txtLabComputer.Visible=$lab -and -not $diagnostic
+        $script:btnAdvanced.Text=if($advanced){'Advanced options v'}else{'Advanced options >'}
+        $script:btnAdvanced.SetBounds(20,$y,175,28); $y+=36
+        foreach($c in @($script:lblPrevious,$script:txtPrevious,$script:btnPrevious,$script:btnAutoFind,$lblSHA,$script:txtSHA,$lblPrevSHA,$script:txtPreviousSHA)){$c.Visible=$advanced}
+        foreach($c in @($lblMandatory,$script:txtMandatory,$lblMore,$script:txtMore)){$c.Visible=$advanced -and -not $diagnostic}
+        if($advanced){
+            Set-WorkspaceField $script:lblPrevious $script:txtPrevious $script:btnPrevious 20 $y $width
+            $script:txtPrevious.Width=$width-202
+            $script:btnAutoFind.SetBounds((20+$width-194),($y+19),90,28); $y+=56
+            Set-WorkspaceField $lblSHA $script:txtSHA $null 20 $y $half
+            Set-WorkspaceField $lblPrevSHA $script:txtPreviousSHA $null (38+$half) $y $half; $y+=56
+            if(-not $diagnostic){
+                Set-WorkspaceField $lblMandatory $script:txtMandatory $null 20 $y $width; $y+=56
+                Set-WorkspaceField $lblMore $script:txtMore $null 20 $y $width
+                $script:txtMore.Height=54; $y+=84
+            }
+        }
+        $live=-not $script:chkDryRun.Checked -and -not $diagnostic
+        $script:chkApproval.Visible=$live; $script:chkRecovery.Visible=$live
+        if($live){
+            $script:chkApproval.SetBounds(20,$y,$width,24); $y+=26
+            $script:chkRecovery.SetBounds(20,$y,$width,24); $y+=30
+        }
+        $x=20
+        $script:btnStart.Visible=-not $diagnostic
+        foreach($button in @($script:btnPreflight,$script:btnStart,$script:btnBackupCheck,$script:btnLogs)){
+            if($button -eq $script:btnStart -and $diagnostic){continue}
+            $button.Location=New-Object Drawing.Point($x,$y); $x+=$button.Width+8
+        }
+        $y+=43
+        $script:lblStatus.SetBounds(20,$y,$width,34); $y+=38
+        $script:progress.SetBounds(20,$y,$width,6); $y+=16
+        $logHeight=[Math]::Max(150,$canvas.ClientSize.Height-($y-$scrollY)-18)
+        $script:logPanel.SetBounds(20,$y,$width,$logHeight)
+        $canvas.AutoScrollMinSize=New-Object Drawing.Size(0,($y-$scrollY+$logHeight+18))
+    } finally {$canvas.ResumeLayout()}
+}
+function Select-WorkspaceOperation([string]$Operation) {
+    if($script:WorkspaceBusy){return}
+    if($Operation -notin @('Diagnostic','Upgrade','LabRepair')){throw 'Unsupported workspace operation.'}
+    $script:cboOperation.SelectedIndex=if($Operation -eq 'LabRepair'){1}else{0}
+    $script:WorkspaceDiagnostic=$Operation -eq 'Diagnostic'
+    $script:chkApproval.Checked=$false; $script:chkRecovery.Checked=$false
+    $script:chkDryRun.Checked=$true
+    $script:workspaceCanvas.AutoScrollPosition=New-Object Drawing.Point(0,0)
+    $script:lblStatus.Text='Operation selected. Dry Run is enabled; live approvals were cleared.'
+    Update-GuiMode
+}
+$script:workspaceTabs[0].Add_Click({Select-WorkspaceOperation 'Diagnostic'})
+$script:workspaceTabs[1].Add_Click({Select-WorkspaceOperation 'LabRepair'})
+$script:workspaceTabs[2].Add_Click({Select-WorkspaceOperation 'Upgrade'})
+$script:btnAdvanced.Add_Click({
+    $script:WorkspaceAdvanced=-not $script:WorkspaceAdvanced
+    $script:workspaceCanvas.AutoScrollPosition=New-Object Drawing.Point(0,0)
+    Update-WorkspaceLayout
+})
+$script:workspaceCanvas.Add_Resize({Update-WorkspaceLayout})
+$script:WorkspaceReady=$true
+
 
 function Get-GuiLogText([switch]$SelectedOnly) {
     $lines = if ($SelectedOnly) { @($script:lstLog.SelectedItems) } else { @($script:lstLog.Items) }
@@ -288,6 +369,8 @@ function Get-GuiOperation {
 }
 
 function Set-GuiBusy([bool]$Busy) {
+    $script:WorkspaceBusy=$Busy
+    foreach($tab in $script:workspaceTabs){$tab.Enabled=-not $Busy}
     foreach ($control in @($script:txtMsi,$script:txtPrevious,$script:txtInstall,
         $script:txtRecoveryRoot,$script:txtSHA,$script:txtPreviousSHA,
         $script:txtMandatory,$script:txtMore,$script:chkDryRun,$script:chkApproval,$script:chkRecovery,
@@ -322,6 +405,11 @@ function Get-GuiWindowsBackupAssessment {
 
 function Find-RecoveryInstallerInGui {
     if ((Get-GuiOperation) -eq 'LabRepair') {
+        if ([string]::IsNullOrWhiteSpace($script:txtMsi.Text)) {
+            $message='Select the Same-version MSI field first. A Recovery MSI alone does not select the repair package. Dry Run can continue; live readiness is not established.'
+            $script:lblStatus.Text=$message
+            return [pscustomobject]@{Found=$false;Verified=$false;Path='';Verification=$message}
+        }
         $installed = Get-OsrProduct
         $package = Get-OsrMsiMetadata -Path $script:txtMsi.Text.Trim()
         $evidence = Assert-OsrPackageAuthenticity -Path $package.Path -ExpectedSha256 $script:txtSHA.Text.Trim()
@@ -408,6 +496,7 @@ function Restore-GuiResumeState([string]$EncodedState) {
     try {
         $operation = [string]$state.Operation
         if ($operation -notin @('','Upgrade','LabRepair')) { throw 'Unsupported operation in elevation state.' }
+        $script:WorkspaceDiagnostic=$false
         $script:cboOperation.SelectedIndex = if ($operation -eq 'LabRepair') { 1 } else { 0 }
         $script:txtLabComputer.Text = [string]$state.LabExpectedComputerName
         $script:txtMsi.Text = [string]$state.NewMsi
@@ -464,6 +553,7 @@ function Get-GuiRunConfiguration([object[]]$Questions) {
     }
 }
 function New-Run([string]$Mode) {
+    if($script:WorkspaceDiagnostic){throw 'Diagnostic is read-only. Select Lab repair or Upgrade to prepare a live operation.'}
     if ($script:chkDryRun.Checked) { throw 'Dry Run is active; deployment worker is disabled.' }
     if (-not (Test-OsrAdministrator)) { throw 'Live operations require an elevated Administrator session.' }
     if($script:ChildProcess -and -not $script:ChildProcess.HasExited){throw 'Another run is already active.'}
@@ -635,6 +725,7 @@ function Inspect-DryRunReadOnly {
         $found=Find-RecoveryInstallerInGui
         if($found.Found -and $found.Verified) {Add-DryRunLog 'A verified recovery MSI is locally available.'}
         elseif($found.Found){Add-DryRunLog 'A previous MSI was found, but authenticity still requires verification.'}
+        elseif((Get-GuiOperation) -eq 'LabRepair'){Add-DryRunLog ('NOTICE: '+$found.Verification)}
         else{Add-DryRunLog 'No complete previous MSI was found automatically; a full-machine recovery mechanism is not yet integrated.'}
     } catch {Add-DryRunLog ('NOTICE: automatic recovery discovery unavailable: '+$_.Exception.Message)}
     try {
@@ -735,6 +826,7 @@ function Update-GuiMode {
         $form.Text = $script:ApplicationTitle
     }
     $dry=[bool]$script:chkDryRun.Checked
+    $script:chkDryRun.Enabled=(-not $script:WorkspaceDiagnostic) -and (-not $script:WorkspaceBusy)
     $lab = (Get-GuiOperation) -eq 'LabRepair'
     $script:btnStart.Text=if($dry){'Start dry run'}elseif($lab){'START LAB REPAIR'}else{'START REAL UPGRADE'}
     $script:lblLabComputer.Visible=$lab
@@ -757,6 +849,7 @@ function Update-GuiMode {
     $script:btnLogs.Enabled=(-not $dry) -and (-not $script:DryRunActive)
     $script:chkApproval.Enabled=(-not $dry) -and (-not $script:DryRunActive)
     $script:chkRecovery.Enabled=(-not $dry) -and (-not $script:DryRunActive)
+    Update-WorkspaceLayout
 }
 $script:dryTimer=New-Object Windows.Forms.Timer
 $script:dryTimer.Interval=520
@@ -812,6 +905,7 @@ $script:btnAutoFind.Add_Click({
 })
 $script:cboOperation.Add_SelectedIndexChanged({
     if ($script:RestoringSession) { return }
+    $script:WorkspaceDiagnostic=$false
     $script:chkApproval.Checked=$false
     $script:chkRecovery.Checked=$false
     $script:chkDryRun.Checked=$true
@@ -828,6 +922,11 @@ $script:cboOperation.Add_SelectedIndexChanged({
 })
 $script:chkDryRun.Add_CheckedChanged({
     if ($script:RestoringSession -or $script:DryRunActive) { return }
+    if($script:WorkspaceDiagnostic -and -not $script:chkDryRun.Checked){
+        $script:chkDryRun.Checked=$true
+        Update-GuiMode
+        return
+    }
     if (-not $script:chkDryRun.Checked) {
         $selection=[Windows.Forms.MessageBox]::Show($form,
             'Switch to LIVE MODE? Windows Administrator approval (UAC) is mandatory. Live operations can stop Freshworks services, create backups, modify files, and install the MSI. An approved recovery method and explicit deployment confirmation are also required.',
@@ -847,6 +946,7 @@ $script:chkDryRun.Add_CheckedChanged({
             if (-not $script:ElevationStarted) { $script:chkDryRun.Checked = $true }
             return
         }
+        $script:lblStatus.Text='Live mode selected. No operation has started; approvals and preflight are still required.'
     } else {
         $script:lblStatus.Text = 'Dry Run enabled. Operations are simulated; existing session privileges are unchanged.'
     }
@@ -857,6 +957,7 @@ $script:btnPreflight.Add_Click({
     catch { [void][Windows.Forms.MessageBox]::Show($form,$_.Exception.Message,'Preflight error') }
 })
 $script:btnStart.Add_Click({
+    if($script:WorkspaceDiagnostic){return}
     if($script:chkDryRun.Checked){
         try {Start-DryRun $false} catch {[void][Windows.Forms.MessageBox]::Show($form,$_.Exception.Message,'Dry Run error')}
         return

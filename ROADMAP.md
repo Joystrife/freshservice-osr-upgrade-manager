@@ -22,14 +22,23 @@ The roadmap is intentionally staged. **A finished GUI or a successful syntax tes
 - [x] Seven Windows PowerShell 5.1 regression suites.
 - [x] Recorded bounded live repair/restoration and Upgrade rejection evidence.
 - [x] User guide, known issues, source release packaging and MIT license.
-- [ ] Executable package, with separate packaging/elevation acceptance checks.
+- [x] Executable package delivered in 0.5.0; remaining policy/UAC acceptance limits are documented.
 - [ ] Broader failure-injection, reboot and crash-recovery qualification.
 
-V3 names this distribution of the v0.4.1 preview. It does not rename or complete the v0.5 feature milestone below.
+V3 names the historical v0.4.1 source preview. The 0.5 version was subsequently assigned to the Workspace and portable distribution milestone below.
 
-## v0.5 — Smart Application Backup (planned)
+## v0.5.0 — Compact Workspace and portable distribution
 
-The next milestone is a targeted OSR application backup, independent of full Windows Server Backup. The implementation plan and acceptance criteria are in [Smart Application Backup](docs/SMART_APPLICATION_BACKUP.md). No v0.5 runtime functionality is implemented yet.
+- [x] Diagnostic, Lab repair and Upgrade tabs with compact spacing and a fixed mode banner.
+- [x] Conditional fields, collapsible advanced settings and copyable resizable logs.
+- [x] Single-file x64 portable launcher and readable source distribution with SHA-256 checksums.
+- [x] Eight PowerShell 5.1 regression suites, including compiled payload extraction checks.
+- [x] Observed Workspace diagnostic/simulation and operator-accepted same-version file-restoration trial.
+- [ ] Complete standard-user/UAC cancellation and representative Windows download-policy qualification.
+
+## Future milestone — Smart Application Backup (planned)
+
+The next milestone is a targeted OSR application backup, independent of full Windows Server Backup. The implementation plan and acceptance criteria are in [Smart Application Backup](docs/SMART_APPLICATION_BACKUP.md). The version number no longer denotes this full backup-provider scope; it remains future work.
 
 - [ ] Bounded, read-only discovery of OSR files, configuration, related registry keys, service definitions and required permissions.
 - [ ] In-memory backup plan with explicit source coverage, unresolved dependencies and operator-selected destination; no writes in Dry Run.
@@ -68,6 +77,6 @@ An application backup does not replace a full-system recovery point or establish
 
 - [ ] End-to-end Windows Server backup/upgrade/recovery acceptance testing.
 - [ ] Signed releases and release checksums.
-- [ ] Interface redesign to separate installer, recovery, validation and audit panels.
+- [x] Compact Workspace separates Diagnostic, Lab repair and Upgrade, with advanced inputs collapsed by default.
 - [ ] Localization framework, with English maintained as the default.
 - [x] MIT license selected by the project owner for this source distribution.

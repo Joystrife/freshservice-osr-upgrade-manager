@@ -16,6 +16,14 @@ try {
         function Get-OsrInstallDirectory { 'C:\SyntheticOSR' }
         . $tempFile
         try {
+            if(-not $script:WorkspaceDiagnostic -or -not $script:chkDryRun.Checked -or $script:chkDryRun.Enabled -or
+                $script:btnStart.Visible -or $script:txtMsi.Visible){throw 'Diagnostic workspace did not default to read-only.'}
+            $script:chkDryRun.Checked=$false
+            if(-not $script:chkDryRun.Checked){throw 'Diagnostic allowed live mode.'}
+            $blocked=$false
+            try{New-Run 'Preflight'}catch{if($_.Exception.Message -match 'Diagnostic is read-only'){$blocked=$true}else{throw}}
+            if(-not $blocked){throw 'Diagnostic launched a worker.'}
+            Select-WorkspaceOperation 'Upgrade'
             $initialLogWidth=$script:lstLog.Width
             $initialLogHeight=$script:lstLog.Height
             $initialInputWidth=$script:txtMsi.Width
@@ -55,12 +63,46 @@ try {
             if ($script:lblLogCopy.Text -notmatch 'Clipboard unavailable') { throw 'Clipboard failure was not handled.' }
             $script:lstLog.Items.Clear()
             Write-Host 'PASS: responsive log/input layout, selected/all Unicode copy, keyboard shortcuts and clipboard failure handling'
+            if($script:WorkspaceAdvanced){throw 'Advanced options must start collapsed.'}
+            $script:txtSHA.Text='synthetic retained input'
+            $onClick=$script:btnAdvanced.GetType().GetMethod('OnClick',[Reflection.BindingFlags]'Instance,NonPublic')
+            [void]$onClick.Invoke($script:btnAdvanced,[object[]]@([EventArgs]::Empty))
+            if($script:txtSHA.Text -ne 'synthetic retained input'){throw 'Collapsing advanced options discarded input.'}
+            $script:txtSHA.Text=''
+            if(-not $script:WorkspaceAdvanced -or $script:txtSHA.Bounds.Height -lt 20){throw 'Advanced options did not expand.'}
+            [void]$onClick.Invoke($script:btnAdvanced,[object[]]@([EventArgs]::Empty))
+            Set-GuiBusy $true
+            Select-WorkspaceOperation 'LabRepair'
+            if((Get-GuiOperation) -ne 'Upgrade' -or $script:workspaceTabs[1].Enabled){throw 'Busy workspace allowed an operation change.'}
+            Set-GuiBusy $false
+            Update-GuiMode
             if (-not $script:chkDryRun.Checked -or (Get-GuiOperation) -ne 'Upgrade') { throw 'GUI defaults changed.' }
             $script:cboOperation.SelectedIndex=1
             if ((Get-GuiOperation) -ne 'LabRepair' -or -not $script:chkDryRun.Checked -or
                 $script:txtMandatory.Text -match 'native Freshservice orchestration action' -or
                 $script:chkRecovery.Text -notmatch 'checkpoint') { throw 'Lab UI selection was not applied.' }
             if ($script:txtRecoveryRoot.Text -ne $script:LabRunBase) { throw 'Lab selection did not choose the shorter default recovery root.' }
+            function Get-OsrProduct { [pscustomobject]@{Version=[version]'2.5.0.0';ProductCode='synthetic'} }
+            function Get-OsrMsiMetadata { throw 'Empty repair target must not reach MSI metadata inspection.' }
+            function Get-OsrServiceRecords { @() }
+            function Get-OsrWindowsBackupCapability { [pscustomobject]@{Status='SYNTHETIC';CandidateTargetCount=0} }
+            $script:txtMsi.Text='   '
+            foreach($previous in @('','C:\synthetic-recovery-only.msi')){
+                $script:txtPrevious.Text=$previous
+                $found=Find-RecoveryInstallerInGui
+                if($found.Found -or $found.Verified -or $found.Verification -notmatch 'Same-version MSI' -or
+                    $script:txtPrevious.Text -ne $previous){throw 'Missing repair target was not explained without promoting recovery media.'}
+            }
+            $script:lstLog.Items.Clear()
+            Inspect-DryRunReadOnly
+            $inspection=Get-GuiLogText
+            if($inspection -notmatch 'Select the Same-version MSI field first' -or
+                $inspection -match 'automatic recovery discovery unavailable|Cannot bind argument|A verified recovery MSI is locally available'){
+                throw 'Dry Run did not explain the missing repair target clearly.'
+            }
+            if(-not $script:chkDryRun.Checked){throw 'Missing repair media changed the simulation mode.'}
+            $script:txtMsi.Text='';$script:txtPrevious.Text='';$script:lstLog.Items.Clear()
+            Write-Host 'PASS: missing same-version target produces actionable guidance; recovery-only input does not establish readiness'
             $script:txtLabComputer.Text='synthetic-guest'
             $script:chkApproval.Checked=$true
             $script:chkRecovery.Checked=$true
@@ -85,6 +127,36 @@ try {
             $blocked=$false
             try { New-Run 'Deploy' } catch { if ($_.Exception.Message -match 'Dry Run is active') { $blocked=$true } else { throw } }
             if (-not $blocked) { throw 'GUI launched a worker during Dry Run.' }
+            Select-WorkspaceOperation 'Diagnostic'
+            if(-not $script:WorkspaceDiagnostic -or -not $script:chkDryRun.Checked -or $script:chkApproval.Checked -or
+                $script:chkRecovery.Checked){throw 'Returning from lab to Diagnostic retained live state.'}
+            Write-Host 'PASS: compact Workspace diagnostic lock, busy tabs, advanced value retention and approval resets'
+            if($env:OSR_GUI_PREVIEW_PATH){
+                $script:lblLogCopy.Text='Activity log | Ctrl+C: copy selected | Ctrl+A: select all'
+                $form.Size=New-Object Drawing.Size(1060,850)
+                $form.Show()
+                [Windows.Forms.Application]::DoEvents()
+                Update-WorkspaceLayout
+                try {
+                    foreach($previewMode in @('Diagnostic','LabRepair','Upgrade')){
+                        Select-WorkspaceOperation $previewMode
+                        if($previewMode -eq 'LabRepair'){
+                            $script:WorkspaceAdvanced=$true
+                            $form.Size=$form.MinimumSize
+                            Update-WorkspaceLayout
+                        }else{
+                            $script:WorkspaceAdvanced=$false
+                            $form.Size=New-Object Drawing.Size(1060,850)
+                            Update-WorkspaceLayout
+                        }
+                        [Windows.Forms.Application]::DoEvents()
+                        $bitmap=New-Object Drawing.Bitmap($form.Width,$form.Height)
+                        $previewDirectory=Split-Path $env:OSR_GUI_PREVIEW_PATH -Parent
+                        $previewName=[IO.Path]::GetFileNameWithoutExtension($env:OSR_GUI_PREVIEW_PATH)+'-'+$previewMode+'.png'
+                        try{$form.DrawToBitmap($bitmap,(New-Object Drawing.Rectangle(0,0,$form.Width,$form.Height)));$bitmap.Save((Join-Path $previewDirectory $previewName))}finally{$bitmap.Dispose()}
+                    }
+                }finally{$form.Hide()}
+            }
             Write-Host 'PASS: actual GUI controls preserve Dry Run, operation reset, elevation payload and lab-specific labels'
         } finally { $form.Dispose() }
     }

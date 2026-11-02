@@ -8,17 +8,17 @@ if ([string]::IsNullOrWhiteSpace($OutputDirectory)) { $OutputDirectory=Join-Path
 $output=[IO.Path]::GetFullPath($OutputDirectory).TrimEnd('\')
 [void](New-Item -Path $output -ItemType Directory -Force)
 $version=([IO.File]::ReadAllText((Join-Path $root 'VERSION'))).Trim()
-if ($version -ne '0.4.1-v3-preview') { throw 'This source release builder is pinned to the V3 preview version.' }
-$zipPath=Join-Path $output 'OSR-Upgrade-Manager-V3-source.zip'
+if ($version -ne '0.5.0') { throw 'This source release builder is pinned to version 0.5.0.' }
+$zipPath=Join-Path $output 'OSR-Upgrade-Manager-0.5.0-source.zip'
 $checksumPath=Join-Path $output 'SHA256SUMS.txt'
 if ((Test-Path -LiteralPath $zipPath) -or (Test-Path -LiteralPath $checksumPath)) { throw 'Release output already exists. Use a new output directory.' }
 $stage=Join-Path $output ('.stage-'+[guid]::NewGuid().ToString('N'))
 try {
     [void](New-Item -Path $stage -ItemType Directory)
-    foreach ($directory in @('src','tests','docs','scripts','.github')) {
+    foreach ($directory in @('src','tests','docs','scripts','launcher','.github')) {
         $sourceDirectory=Join-Path $root $directory
         foreach ($file in @(Get-ChildItem -LiteralPath $sourceDirectory -Recurse -File -Force |
-            Where-Object { $_.Extension -in @('.ps1','.psm1','.md','.svg','.yml') })) {
+            Where-Object { $_.Extension -in @('.ps1','.psm1','.cs','.manifest','.md','.svg','.png','.yml') })) {
             if ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Reparse points are not allowed in source packages.' }
             $relative=$file.FullName.Substring($root.Length+1)
             $target=Join-Path $stage $relative
@@ -45,7 +45,7 @@ try {
     } finally { $archive.Dispose() }
     $hash=(Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash
     [IO.File]::WriteAllText($checksumPath,($hash+'  '+[IO.Path]::GetFileName($zipPath)+[Environment]::NewLine),[Text.Encoding]::ASCII)
-    Write-Host ('Built V3 source package; source commit: '+$SourceCommit)
+    Write-Host ('Built 0.5.0 source package; source commit: '+$SourceCommit)
     Write-Output $zipPath
     Write-Output $checksumPath
 } finally {
