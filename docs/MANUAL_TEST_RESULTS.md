@@ -1,4 +1,16 @@
-# Manual Test Results - v0.4 Preview
+# Manual Test Results - 0.5.0 and historical previews
+
+## Portable Workspace qualification - 2026-11-02
+
+Evidence supplied by the operator: copied logs and screenshots of the compact Workspace executable running in an administrator session in the dedicated Windows Server 2019 Hyper-V lab. Diagnostic/read-only preflight completed, both Freshworks services were detected as running and the backup capability dialog reported the Windows feature absent without installing it. Lab repair and Upgrade Dry Runs completed the simulated rejection/restoration and acceptance paths respectively. The equal-version Upgrade warning was present; simulation acceptance did not establish live upgrade eligibility.
+
+A later real Lab repair trial recorded: preflight at 22:10:47, destination path budget 245 characters, both services stopped, application files and the two configuration files captured, saved MSI verified, same-version repair invoked, and services restarted. The operator deliberately answered NO at 22:15:25 and approved restoration at 22:15:46. At 22:19:39 the worker reported matching captured file hashes/permissions; operator acceptance at 22:20:51 ended with previous installation restored. A separate guest query shows both Freshworks services running. These times are operator-supplied local log times, not independently measured durations.
+
+This records another observed successful same-version installation-file restoration via the portable Workspace GUI. The rejection was deliberate, not a genuine MSI failure. No independent full-tree rehash, integrated JSON report inspection, damaged-file injection, registry/external-state recovery or cross-version upgrade/rollback qualification was supplied. Latest-build standard-user/UAC rejection and representative download-policy behavior remain incompletely observed. No production workflow execution or host-checkpoint restoration is established by this evidence.
+
+Publication-only changes after these trials update version labels and improve the Live mode status text. Automated regression checks cover the runtime and packaging; they do not replace outstanding manual qualification.
+
+## Historical source-preview evidence
 
 Evidence: operator-provided screenshots reviewed during development, plus a local repair report and MSI log reviewed for the dedicated lab trial below. Initial GUI observations used an extracted v0.4 archive whose exact commit was not established. Lab repair used the separate experimental runner with the MSI COM output fix. No environment identifiers, raw reports, logs or screenshots are stored here.
 

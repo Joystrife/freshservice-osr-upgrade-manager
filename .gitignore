@@ -5,6 +5,7 @@
 *.7z
 *.bak
 *.cab
+*.exe
 
 # Generated logs, reports and environment-specific data
 *.log

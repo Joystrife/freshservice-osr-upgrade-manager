@@ -1,18 +1,18 @@
-# V3 Known Issues and Validation Limits
+# 0.5.0 Known Issues and Validation Limits
 
-This list applies to `v0.4.1-v3-preview`. A successful lab trial is evidence for that scenario, not a general production-readiness claim.
+This list applies to `v0.5.0`. A successful lab trial is evidence for that scenario, not a general production-readiness claim.
 
 | Area | Current boundary |
 | --- | --- |
 | Cross-version Upgrade/rollback | Not validated; original OSR 2.4 media was unavailable for the intended 2.4/2.5 pair |
-| Same-version Lab Repair | One real accepted GUI/worker repair trial and one file-restoration trial; additional failures/reboots still need qualification |
+| Same-version Lab Repair | Operator-accepted GUI/worker repair and file-restoration trials, including the portable Workspace GUI; additional failures/reboots still need qualification |
 | Application capture | Installation files, empty directories and security metadata; registry, external dependencies and account secrets are excluded |
 | Independent verification | Live file comparisons were performed by the worker; the complete retained payload was not independently rehashed outside it |
 | Recovery after crash | No restartable recovery session or external recovery controller |
 | Windows Server Backup | Discovery and command planning only; no creation or WinRE recovery execution |
 | Lab isolation | Guest-name/Hyper-V checks and checkpoint confirmation are operator safeguards, not attestation or automated checkpoint verification |
 | Cancellation/concurrency | No robust cancellation or host-wide interprocess lock; do not run concurrent live instances |
-| Packaging | Source ZIP and launcher only; no EXE, signed binary or Authenticode publisher identity in V3 |
+| Packaging | Source ZIP and unsigned portable EXE; no Authenticode publisher identity or established SmartScreen reputation |
 
 ## Path length
 
@@ -37,6 +37,6 @@ Configuration/log files may legitimately change when services run. Service statu
 - Missing/corrupt-file recovery and genuine MSI/service failure injection in the lab.
 - Repeated trials across representative supported Windows Server deployments and upgrade version pairs.
 - Independent payload/configuration comparison, reboot and crash-recovery qualification.
-- Separate source-to-EXE packaging, extraction, UAC and policy acceptance before any executable release.
+- The development portable launcher has automated build, payload-integrity and extraction checks. Workspace startup, read-only inspection, simulations and same-version file restoration were observed in the lab. Standard-user/UAC cancellation and representative Windows policy acceptance are still incompletely qualified. See [Portable Executable](PORTABLE_EXECUTABLE.md).
 
 See [Manual Test Results](MANUAL_TEST_RESULTS.md) for the actual observations rather than inferred guarantees.

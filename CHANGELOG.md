@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0 - Compact Workspace and portable executable (2026-11-02)
+
+- Replaced an empty-path binding error in Lab repair recovery discovery with guidance to select the Same-version MSI first. A recovery-only selection is not promoted to repair readiness; Dry Run remains available.
+- Applied the compact Workspace UI with Diagnostic, Lab repair and Upgrade tabs, operation-specific fields, collapsible advanced inputs and a fixed mode/privilege header. Diagnostic is read-only and cannot start the live worker; operation changes restore Dry Run and clear approvals.
+- Added a single-file x64 .NET Framework launcher embedding the existing V3 GUI and four runtime modules, with standard-user startup and default-on Dry Run preserved.
+- Added SHA-256 payload verification, an exact extraction allowlist, protected per-launch application folders, reparse-point/path checks and downloaded-file blocking without machine policy changes.
+- Added an offline build script and regression coverage for embedded source parity, permissions, damaged payloads and unsafe archives. Interactive VM/UAC qualification remains pending; the published V3 source tag is unchanged.
+
 ## 0.4.1-v3-preview - V3 Integrated Lab Repair (2026-11-02)
 
 - Published an experimental source distribution with an English user guide, workflow illustration, known issues, release notes and MIT license.

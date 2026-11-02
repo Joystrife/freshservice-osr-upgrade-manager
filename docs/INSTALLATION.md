@@ -1,11 +1,11 @@
 # Getting Started
 
-For V3 (`v0.4.1-v3-preview`), start with the illustrated [User Guide](USER_GUIDE.md), [Known Issues](KNOWN_ISSUES.md) and [Release Notes](RELEASE_V3.md). Extract the complete source ZIP and double-click `Start-Manager.cmd`; an EXE is not included yet.
+For version 0.5.0, start with the illustrated [User Guide](USER_GUIDE.md), [Known Issues](KNOWN_ISSUES.md) and [Release Notes](RELEASE_0_5.md). Double-click the portable EXE, or extract the complete source ZIP and run `Start-Manager.cmd`. See [Portable Executable](PORTABLE_EXECUTABLE.md) for Windows policy behavior and extraction details.
 
 ## Requirements
 
 - Windows with interactive Windows PowerShell 5.1 and Windows Forms support.
-- The complete `src/` directory, including all `.psm1` modules and the worker script.
+- For source startup, the complete `src/` directory, including all `.psm1` modules and the worker script. The portable EXE embeds these runtime files.
 - Administrator approval for Live Mode. Dry Run and backup capability assessment are read-only.
 
 ## Launch
@@ -19,7 +19,7 @@ powershell.exe -NoProfile -STA -ExecutionPolicy RemoteSigned -File ".\src\Freshs
 ## Dry Run (recommended first)
 
 1. Leave the **DRY RUN** box checked (default).
-2. Optionally select the official `FO-OSR.msi` with Browse.
+2. Start on Diagnostic for read-only inspection. Select Lab repair or Upgrade to show MSI fields and the simulation action.
 3. Select **Read-only preflight** or **Start dry run**.
 4. Review the in-memory activity log and experiment with functional test responses.
 5. No services are stopped, no MSI is launched, and no recovery files are created.

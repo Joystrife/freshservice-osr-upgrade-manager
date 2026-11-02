@@ -3,7 +3,6 @@ name: Publish V3 source preview
 on:
   push:
     branches: ['release/v3']
-  workflow_dispatch:
 
 permissions:
   contents: read
