@@ -185,15 +185,16 @@ function Restore-OsrLabFileSnapshot {
         }
     }
     Copy-OsrLabTree -Source $Source -Destination $Destination -Inventory $Inventory
-    # Reapply original file/directory security, then root security, after restoring content.
-    foreach ($entry in @($Inventory.Entries | Sort-Object { $_.Path.Length } -Descending)) {
+    # Restore parent security before descendants: parent ACL writes can propagate
+    # inherited ACEs and must never overwrite an already restored child ACL.
+    $rootSecurity = New-Object Security.AccessControl.DirectorySecurity
+    $rootSecurity.SetSecurityDescriptorSddlForm([string]$Inventory.RootSDDL)
+    Set-Acl -LiteralPath $Destination -AclObject $rootSecurity -ErrorAction Stop
+    foreach ($entry in @($Inventory.Entries | Sort-Object { $_.Path.Length })) {
         $security = if ($entry.Directory) { New-Object Security.AccessControl.DirectorySecurity } else { New-Object Security.AccessControl.FileSecurity }
         $security.SetSecurityDescriptorSddlForm([string]$entry.SDDL)
         Set-Acl -LiteralPath (Resolve-OsrLabChildPath $Destination $entry.Path) -AclObject $security -ErrorAction Stop
     }
-    $rootSecurity = New-Object Security.AccessControl.DirectorySecurity
-    $rootSecurity.SetSecurityDescriptorSddlForm([string]$Inventory.RootSDDL)
-    Set-Acl -LiteralPath $Destination -AclObject $rootSecurity -ErrorAction Stop
     Assert-OsrLabTreeEqual -Expected $Inventory -Actual (Get-OsrLabTreeInventory $Destination) -Security
 }
 
