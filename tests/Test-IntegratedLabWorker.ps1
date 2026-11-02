@@ -52,6 +52,7 @@ function Invoke-FixtureRun {
     foreach ($key in $Settings.Keys) { $cfg[$key]=$Settings[$key] }
     $cfgPath=Join-Path $caseRoot 'settings.json'
     $cfg | ConvertTo-Json | Set-Content -LiteralPath $cfgPath -Encoding UTF8
+    $initialSecurity=Get-OsrLabTreeInventory $source
     $workerPath=Join-Path $caseRoot 'worker.ps1'
     [IO.File]::WriteAllText($workerPath,$instrumented,[Text.Encoding]::UTF8)
     & {
@@ -105,6 +106,8 @@ function Invoke-FixtureRun {
     } $workerPath $cfgPath $run $Operation $Mode
     $report=Get-Content -LiteralPath (Join-Path $run 'report.json') -Raw | ConvertFrom-Json
     if ($report.Status -ne $ExpectedStatus) {
+        Write-Host ('Synthetic ACL baseline: '+($initialSecurity | ConvertTo-Json -Depth 5 -Compress))
+        Write-Host ('Synthetic ACL actual: '+((Get-OsrLabTreeInventory $source) | ConvertTo-Json -Depth 5 -Compress))
         $activity=Get-Content -LiteralPath (Join-Path $run 'activity.log') -Raw
         throw ("{0}: expected {1}, got {2}. {3}" -f $Name,$ExpectedStatus,$report.Status,$activity)
     }
