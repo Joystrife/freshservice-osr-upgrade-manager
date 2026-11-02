@@ -1,9 +1,11 @@
 # Getting Started
 
+For V3 (`v0.4.1-v3-preview`), start with the illustrated [User Guide](USER_GUIDE.md), [Known Issues](KNOWN_ISSUES.md) and [Release Notes](RELEASE_V3.md). Extract the complete source ZIP and double-click `Start-Manager.cmd`; an EXE is not included yet.
+
 ## Requirements
 
 - Windows with interactive Windows PowerShell 5.1 and Windows Forms support.
-- The complete `src/` directory, including both `.psm1` modules and the worker script.
+- The complete `src/` directory, including all `.psm1` modules and the worker script.
 - Administrator approval for Live Mode. Dry Run and backup capability assessment are read-only.
 
 ## Launch
@@ -11,7 +13,7 @@
 From the repository root:
 
 ```powershell
-powershell.exe -NoProfile -STA -File ".\src\Freshservice_OSR_Upgrade_GUI.ps1"
+powershell.exe -NoProfile -STA -ExecutionPolicy RemoteSigned -File ".\src\Freshservice_OSR_Upgrade_GUI.ps1"
 ```
 
 ## Dry Run (recommended first)
@@ -40,7 +42,7 @@ The **Auto-find** action reads OSR MSI registration and searches a bounded set o
 
 Uncheck DRY RUN and confirm. If the current Windows session is not elevated, the application triggers an ordinary Windows User Account Control prompt. If elevation succeeds, the GUI reopens with its non-secret form settings. If elevation is declined, the original GUI stays in Dry Run.
 
-The existing live workflow still requires a verified original MSI and an independently tested application-level restoration procedure. Windows Server Backup detection cannot bypass this gate.
+The Upgrade workflow requires verified original recovery media and an independently tested version-specific restoration procedure. The separate Lab Repair workflow requires an exact same-version/product MSI, named Hyper-V guest, explicit lab approval and baseline checkpoint attestation; it does not qualify cross-version recovery. Windows Server Backup detection cannot bypass either workflow's checks.
 
 **Do not use the experimental Live Mode in production until the relevant Freshworks version upgrade and recovery paths have been tested.**
 

@@ -89,7 +89,9 @@ function Get-OsrMsiMetadata {
         $installer = New-Object -ComObject WindowsInstaller.Installer
         $database = $installer.OpenDatabase((Resolve-Path -LiteralPath $Path).ProviderPath,0)
         $view = $database.OpenView('SELECT `Property`, `Value` FROM `Property`')
-        $view.Execute()
+        # Windows PowerShell 5.1 can emit null COM method return values into
+        # the success stream. Metadata must contain exactly one typed record.
+        [void]$view.Execute()
         $properties = @{}
         while ($null -ne ($record = $view.Fetch())) {
             $properties[$record.StringData(1)] = $record.StringData(2)
@@ -111,7 +113,7 @@ function Get-OsrMsiMetadata {
     }
     finally {
         if ($null -ne $record) { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($record) }
-        if ($null -ne $view) { $view.Close(); [void][Runtime.InteropServices.Marshal]::ReleaseComObject($view) }
+        if ($null -ne $view) { [void]$view.Close(); [void][Runtime.InteropServices.Marshal]::ReleaseComObject($view) }
         if ($null -ne $database) { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($database) }
         if ($null -ne $installer) { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($installer) }
     }
@@ -182,12 +184,34 @@ function Start-OsrServices {
     foreach ($svc in @(Get-OsrServiceRecords)) { if ($svc.State -ne 'Running') { throw "Service not running: $($svc.DisplayName)" } }
 }
 
+function Assert-OsrSameVersionRepair {
+    param([Parameter(Mandatory)]$InstalledProduct,[Parameter(Mandatory)]$Package)
+    if ($null -eq $Package.Version -or $null -eq $InstalledProduct.Version -or
+        [version]$Package.Version -ne [version]$InstalledProduct.Version) {
+        throw 'Repair requires exactly the installed OSR version.'
+    }
+    $installedCode = [string]$InstalledProduct.ProductCode
+    $packageCode = [string]$Package.ProductCode
+    $parsedCode = [guid]::Empty
+    if (-not [guid]::TryParseExact($installedCode,'B',[ref]$parsedCode) -or
+        $packageCode -ine $installedCode) {
+        throw 'Repair requires the same registered MSI ProductCode.'
+    }
+}
+
 function Invoke-OsrMsi {
-    param([Parameter(Mandatory)][ValidateSet('Install','Uninstall')][string]$Operation,
+    param([Parameter(Mandatory)][ValidateSet('Install','Uninstall','Repair')][string]$Operation,
         [Parameter(Mandatory)][string]$Target,[Parameter(Mandatory)][string]$LogFile,
-        [switch]$Interactive)
+        [switch]$Interactive,[string]$ExpectedSha256)
+    if ($Operation -eq 'Repair') {
+        if (-not (Test-OsrAdministrator)) { throw 'MSI repair requires Administrator privileges.' }
+        $installed = Get-OsrProduct
+        $package = Get-OsrMsiMetadata -Path $Target
+        [void](Assert-OsrPackageAuthenticity -Path $Target -ExpectedSha256 $ExpectedSha256)
+        Assert-OsrSameVersionRepair -InstalledProduct $installed -Package $package
+    }
     # Always disallow reboot. Nonzero/3010 are returned for the caller to handle.
-    $verb = if($Operation -eq 'Install'){'/i'}else{'/x'}
+    $verb = switch ($Operation) { 'Install' { '/i' } 'Uninstall' { '/x' } 'Repair' { '/fomus' } }
     $ui = if($Interactive){''}else{'/qn'}
     $args = "$verb `"$Target`" $ui /norestart /L*v `"$LogFile`""
     $p = Start-Process -FilePath 'msiexec.exe' -ArgumentList $args -PassThru -Wait -ErrorAction Stop
@@ -315,4 +339,4 @@ function Get-OsrRecoveryEnvironment {
     }
 }
 
-Export-ModuleMember -Function Test-OsrAdministrator,Get-OsrProduct,Get-OsrServiceRecords,Get-OsrInstallDirectory,Get-OsrMsiMetadata,Assert-OsrPackageAuthenticity,Assert-OsrSafePath,Invoke-OsrRobocopy,Stop-OsrServices,Start-OsrServices,Invoke-OsrMsi,Find-OsrPreviousMsi,Get-OsrRecoveryEnvironment
+Export-ModuleMember -Function Test-OsrAdministrator,Get-OsrProduct,Get-OsrServiceRecords,Get-OsrInstallDirectory,Get-OsrMsiMetadata,Assert-OsrPackageAuthenticity,Assert-OsrSafePath,Invoke-OsrRobocopy,Stop-OsrServices,Start-OsrServices,Invoke-OsrMsi,Find-OsrPreviousMsi,Get-OsrRecoveryEnvironment,Assert-OsrSameVersionRepair

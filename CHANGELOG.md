@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.1-v3-preview - V3 Integrated Lab Repair (2026-11-02)
+
+- Published an experimental source distribution with an English user guide, workflow illustration, known issues, release notes and MIT license.
+- Recorded one accepted main-GUI same-version repair trial, one accepted same-version installation-file restoration trial, and equal-version Upgrade rejection in the dedicated lab. Cross-version operations remain unqualified.
+
+- Added a short default lab recovery root and conservative Windows PowerShell 5.1 path-budget checks before service control. Overlong backup/restore paths fail closed without skipping files or changing Windows policy.
+
+- Made the log area resize with the main window and input rows expand horizontally. Added selected/all log copying, a context menu and Ctrl+A/Ctrl+C without creating Dry Run log files.
+
+- Added an explicit Lab Repair selection to the main GUI and main worker, with default-on Dry Run, guest-name binding, checkpoint attestation and separate lab approval wording.
+- Added verified installation-tree capture and experimental same-version file restoration through the existing acceptance/rollback decision channel.
+- Preserved the Upgrade version, package, maintenance and independently validated recovery gates; malformed approval values fail closed.
+- Added Windows PowerShell 5.1 tests for actual WinForms controls, synthetic worker paths, file/permission restoration, altered backups and unsafe paths. Automated checks and bounded live lab observations are documented separately.
+- Fixed null COM return values contaminating MSI metadata in Windows PowerShell 5.1; covered by a real COM regression using synthetic MSI metadata.
+
 ## 0.4.0 — Recovery Provider Manager foundation (experimental)
 
 - Added a standalone read-only Windows Server Backup capability provider.

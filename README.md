@@ -4,7 +4,19 @@
 
 [![PowerShell 5.1 checks](https://github.com/Joystrife/freshservice-osr-upgrade-manager/actions/workflows/powershell-syntax.yml/badge.svg)](https://github.com/Joystrife/freshservice-osr-upgrade-manager/actions/workflows/powershell-syntax.yml)
 
-**Release: v0.4.0 — experimental development preview.** This is a community project, not an official Freshworks application. The GUI runs on Windows PowerShell 5.1 and Windows Forms. **Windows server upgrades, backups and recovery have not been validated end-to-end in a production environment.**
+**V3 — Integrated Lab Repair (`v0.4.1-v3-preview`), experimental source release.** This is a community project, not an official Freshworks application. The GUI runs on Windows PowerShell 5.1 and Windows Forms. The integrated same-version repair and installation-file restoration paths have been exercised in a dedicated Windows Server 2019 lab. **Cross-version upgrades, downgrades and full application recovery are not validated.**
+
+Download the source package from [GitHub Releases](https://github.com/Joystrife/freshservice-osr-upgrade-manager/releases). Extract the complete ZIP and double-click **Start-Manager.cmd**. Keep the `src` folder beside the launcher. V3 does not include an EXE or the Freshworks MSI; an executable package is a later distribution option.
+
+Start with the [User Guide](docs/USER_GUIDE.md), then review [Known Issues](docs/KNOWN_ISSUES.md), [Release Notes](docs/RELEASE_V3.md) and [Test Evidence](docs/MANUAL_TEST_RESULTS.md).
+
+![Workflow and validation boundaries](docs/images/workflow.svg)
+
+| Mode | Purpose | Evidence in V3 |
+| --- | --- | --- |
+| Dry Run | Read-only inspection followed by an in-memory UI simulation | Tested; simulation can continue after readiness warnings |
+| Upgrade | Deploy a newer authenticated MSI with independent recovery prerequisites | Equal-version rejection tested; cross-version deployment is unqualified |
+| Lab Repair | Exercise the main GUI/worker on the exact installed version in a named Hyper-V guest | One accepted live 2.5-to-2.5 trial and one operator-accepted file-restoration trial |
 
 ## Vision
 
@@ -24,11 +36,15 @@ A future recovery-provider architecture will select capabilities based on **what
 | Installed OSR version and Freshworks service discovery | Implemented |
 | Official MSI metadata and signature/checksum validation | Implemented |
 | Automatic search for a matching previous original OSR MSI | Implemented (bounded local search; cannot download old versions) |
-| Controlled Windows service stop/start around MSI deployment | Implemented; real deployment not validated |
+| Controlled Windows service stop/start | Observed in same-version lab repair/restoration; cross-version deployment unqualified |
 | Manual post-installation functional acceptance | Implemented |
 | Previous-MSI-based application recovery engine | Implemented but **requires independently validated downgrade procedure** |
 | Windows Server Backup (WSB) feature, command and destination candidate discovery | **New in v0.4.0: read-only only** |
 | WSB backup command preview with source/target volume validation | **New in v0.4.0: no command execution** |
+| Smart Application Backup discovery, protected capture and integrity verification | Planned for v0.5; design only |
+| Same-version Lab Repair through the main GUI/worker | Implemented; bounded live lab evidence |
+| Installation-file snapshot, hash/permission comparison and operator-approved lab restoration | Implemented for Lab Repair; excludes registry/external state |
+| Resizable and copyable in-memory journal | Implemented; Copy all logs, selection, Ctrl+A/Ctrl+C |
 | Automatic creation of a Windows Server Backup | Not implemented |
 | Full-system recovery automatically executed through WinRE or an external controller | Not implemented |
 | AWS / Hyper-V / VMware provider integration | Planned, not implemented |
@@ -41,7 +57,7 @@ A future recovery-provider architecture will select capabilities based on **what
 Download or clone the repository on a Windows host. Run from the project root:
 
 ```powershell
-powershell.exe -NoProfile -STA -File ".\src\Freshservice_OSR_Upgrade_GUI.ps1"
+powershell.exe -NoProfile -STA -ExecutionPolicy RemoteSigned -File ".\src\Freshservice_OSR_Upgrade_GUI.ps1"
 ```
 
 - **DRY RUN** is checked on startup. The simulated upgrade, backup, service changes and rollback do not modify the server; logs remain in memory.
@@ -64,6 +80,12 @@ This version does **not** create full Windows backups, install Windows features,
 
 See [Recovery Architecture](docs/RECOVERY_ARCHITECTURE.md) and [Roadmap](ROADMAP.md).
 
+## Next milestone — v0.5 Smart Application Backup
+
+The next milestone targets OSR application files, configuration, related registry entries, service definitions and permissions. Start with bounded read-only discovery and an in-memory plan, then implement explicitly authorized capture and independent integrity verification. See the [development plan and acceptance criteria](docs/SMART_APPLICATION_BACKUP.md).
+
+V3 is the distribution name for this v0.4.1 preview, not the planned v0.5 Smart Application Backup milestone. The lab file snapshot is narrower than that planned provider. Dry Run remains enabled by default, Windows PowerShell 5.1 remains the runtime baseline, and a valid backup must not automatically authorize deployment or claim validated cross-version rollback. Full Windows Server Backup creation remains a separate future milestone.
+
 ## Source layout
 
 ```text
@@ -72,25 +94,42 @@ src/
   OSR.Upgrade.Worker.ps1                 # Controlled upgrade + operator decisions
   OSR.Upgrade.Core.psm1                  # MSI, services, product and local recovery
   OSR.Recovery.WindowsServerBackup.psm1  # Read-only Windows backup provider v0.4
+  OSR.Recovery.LabFiles.psm1             # Bounded lab file capture/restore
+  OSR.Repair.Lab.ps1                     # Earlier standalone lab experiment
 tests/
   Test-RegistryDiscovery.ps1
   Test-WindowsBackupProvider.ps1
+  Test-GuiLabMode.ps1
+  Test-IntegratedLabWorker.ps1
+  Test-LabFiles.ps1
+  Test-MsiMetadata.ps1
+  Test-SameVersionRepair.ps1
 docs/
   DESIGN.md
   INSTALLATION.md
   RECOVERY_ARCHITECTURE.md
   RECOVERY_PROVIDERS.md
+  SMART_APPLICATION_BACKUP.md           # Planned v0.5 scope and acceptance criteria
+  USER_GUIDE.md
+  KNOWN_ISSUES.md
+  RELEASE_V3.md
 .github/workflows/
   powershell-syntax.yml
 ROADMAP.md
 CHANGELOG.md
+Start-Manager.cmd
+LICENSE
 ```
 
 ## Security and responsible operation
 
+An experimental [same-version repair lab](docs/SAME_VERSION_REPAIR_LAB.md) now provides a separate default-read-only entry point. It does not relax production upgrade version checks, implement complete Smart Application Backup, or establish validated restoration.
+
+The main GUI also provides an explicit [integrated Lab Repair workflow](docs/INTEGRATED_LAB_REPAIR.md), using the main worker for backup, repair, acceptance and experimental installation-file restoration. Dry Run remains enabled by default. One live repair/acceptance trial and one live same-version file-restoration trial have been operator-accepted in a dedicated lab; broader recovery and cross-version qualification remain pending. See [Manual Test Results](docs/MANUAL_TEST_RESULTS.md) for evidence and limits.
+
 Never commit MSI installers, recovery-point files, registry exports, service credentials, private keys, backup archives, machine identifiers or execution logs. Preserve restrictive Windows file permissions on backup data. Dry Run does not validate a real upgrade; a successful application MSI install does not prove the orchestration workflows still function.
 
-GitHub Actions executes **Windows PowerShell 5.1 syntax checks and mock-style regression tests**. These tests do not create backups, stop services, or run installations.
+GitHub Actions executes **Windows PowerShell 5.1 syntax checks and seven regression suites**. Tests use synthetic files/MSI metadata, unshown GUI controls and mocked OSR service/installer boundaries. They create temporary fixtures but never install OSR or control real services. Lab observations and automated checks are described separately in the test evidence.
 
 ## Official references
 
@@ -101,4 +140,4 @@ GitHub Actions executes **Windows PowerShell 5.1 syntax checks and mock-style re
 
 ## License
 
-A project-wide license has not been selected. Public visibility does not, by itself, grant permission to redistribute or modify the code. A license will be added once the project owner confirms the applicable rights and preferred terms.
+The project source is available under the [MIT License](LICENSE). Freshworks installers and third-party products are not included and retain their own terms.

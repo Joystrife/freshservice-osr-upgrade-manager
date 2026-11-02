@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="390" viewBox="0 0 1120 390" role="img" aria-labelledby="title desc">
+  <title id="title">V3 operation workflow</title>
+  <desc id="desc">Dry Run simulates in memory. Lab Repair captures files, repairs the same version and asks for acceptance or file restoration. Upgrade requires a newer version and independent recovery proof.</desc>
+  <rect width="1120" height="390" rx="16" fill="#f4f7fa"/>
+  <g font-family="Segoe UI, Arial, sans-serif">
+    <text x="30" y="38" font-size="23" font-weight="600" fill="#135b4c">Freshservice OSR Upgrade Manager - V3 Preview</text>
+    <rect x="25" y="62" width="1070" height="75" rx="10" fill="#e0f2ec"/>
+    <text x="45" y="90" font-size="18" font-weight="600" fill="#135b4c">1. Start safely: Dry Run is ON</text>
+    <text x="45" y="117" font-size="16" fill="#213547">Inspect environment and MSI → simulate steps and decisions → copy the in-memory log</text>
+    <rect x="25" y="153" width="1070" height="124" rx="10" fill="#e4edf9"/>
+    <text x="45" y="182" font-size="18" font-weight="600" fill="#244d7b">2. Authorized Lab Repair: exact same version, named Hyper-V guest</text>
+    <text x="45" y="211" font-size="16" fill="#213547">Preflight → stop Freshworks services → capture and verify files → repair MSI → restart services</text>
+    <text x="45" y="240" font-size="16" fill="#213547">Accept result → finish     |     Reject result → approve file restoration → verify → operator acceptance</text>
+    <text x="45" y="263" font-size="14" fill="#244d7b">Host checkpoint is a separate operator-confirmed lab fallback. Registry and external state are outside this capture.</text>
+    <rect x="25" y="293" width="1070" height="76" rx="10" fill="#fff0d9"/>
+    <text x="45" y="321" font-size="18" font-weight="600" fill="#85540f">3. Upgrade: strictly newer MSI and independently validated recovery procedure</text>
+    <text x="45" y="349" font-size="16" fill="#61451d">Equal-version rejection tested. Cross-version upgrade/rollback remains unqualified in this release.</text>
+  </g>
+</svg>
