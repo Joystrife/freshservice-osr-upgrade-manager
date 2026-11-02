@@ -51,7 +51,10 @@ jobs:
             const tag = 'v' + fs.readFileSync('VERSION', 'utf8').trim();
             if (tag !== 'v0.4.1-v3-preview') throw new Error('Unexpected release version');
             let tagCommit = null;
-            try { tagCommit = (await github.rest.repos.getCommit({owner, repo, ref: tag})).data.sha; }
+            try {
+              await github.rest.git.getRef({owner, repo, ref: `tags/${tag}`});
+              tagCommit = (await github.rest.repos.getCommit({owner, repo, ref: tag})).data.sha;
+            }
             catch (error) { if (error.status !== 404) throw error; }
             if (tagCommit && tagCommit !== context.sha) throw new Error('Refusing to move an existing release tag');
             const docBase = `https://github.com/${owner}/${repo}/blob/${context.sha}/docs/`;
