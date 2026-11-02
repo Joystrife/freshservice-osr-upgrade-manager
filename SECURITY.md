@@ -10,7 +10,7 @@ This is an **experimental preview** and must not be represented as an endorsed r
 - Live deployment requires deliberate mode change, Windows UAC elevation and explicit operator approvals.
 - An available tool (`wbadmin.exe`, VSS or a hypervisor) does **not** mean an operable, recoverable point has been created.
 - Never automatically stop the native Windows `WinRM` service. The managed Freshworks service is `Orchestration Server - WinRM_SSH`.
-- Do not store MSI installers, backups, sensitive settings, passwords, recovery scripts, logs or server identifiers in the public repository.
+- Do not store MSI installers, backups, sensitive settings, passwords, machine-specific recovery scripts, logs or server identifiers in the public repository.
 - Recovery data can contain secrets; use restrictive ACLs, organizational retention policies and independently protected backup targets.
 
 ## Reporting security issues
@@ -19,4 +19,4 @@ Open a private GitHub security advisory when available. Do not paste confidentia
 
 ## Project governance
 
-The repository is publicly visible, but no project-wide redistribution license has yet been selected. Verify your rights to publish and modify any code derived from employer-owned assets.
+The generic project source is distributed under the MIT License. This does not grant rights to Freshworks media or to private operational artifacts. Do not contribute employer-owned material unless you have the relevant rights.

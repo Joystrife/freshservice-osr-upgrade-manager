@@ -1,0 +1,85 @@
+name: Publish V3 source preview
+
+on:
+  push:
+    branches: ['release/v3']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-v3-source
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Windows PowerShell 5.1 source and regression suites
+        shell: powershell
+        run: .\scripts\Test-Release.ps1
+      - name: Build and validate source package
+        shell: powershell
+        run: .\scripts\Build-SourceRelease.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: V3-source-preview
+          path: |
+            dist/OSR-Upgrade-Manager-V3-source.zip
+            dist/SHA256SUMS.txt
+
+  publish:
+    needs: validate
+    if: github.ref == 'refs/heads/release/v3'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: V3-source-preview
+          path: dist
+      - name: Publish experimental source prerelease
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const {owner, repo} = context.repo;
+            const tag = 'v' + fs.readFileSync('VERSION', 'utf8').trim();
+            if (tag !== 'v0.4.1-v3-preview') throw new Error('Unexpected release version');
+            let tagCommit = null;
+            try {
+              await github.rest.git.getRef({owner, repo, ref: `tags/${tag}`});
+              tagCommit = (await github.rest.repos.getCommit({owner, repo, ref: tag})).data.sha;
+            }
+            catch (error) { if (error.status !== 404) throw error; }
+            if (tagCommit && tagCommit !== context.sha) throw new Error('Refusing to move an existing release tag');
+            const docBase = `https://github.com/${owner}/${repo}/blob/${context.sha}/docs/`;
+            const body = fs.readFileSync('docs/RELEASE_V3.md', 'utf8')
+              .replace(/\]\(([^)]+\.md)\)/g, (_, path) => `](${docBase}${path})`);
+            let release = null;
+            try { release = (await github.rest.repos.getReleaseByTag({owner, repo, tag})).data; }
+            catch (error) { if (error.status !== 404) throw error; }
+            if (release && !release.draft) {
+              if (release.target_commitish !== context.sha) throw new Error('Published release points to a different commit');
+              core.info('This source release is already published; no assets changed.');
+              return;
+            }
+            if (!release) release = (await github.rest.repos.createRelease({
+              owner, repo, tag_name: tag, target_commitish: context.sha,
+              name: 'V3 - Integrated Lab Repair (experimental preview)',
+              body, draft: true, prerelease: true
+            })).data;
+            for (const name of ['OSR-Upgrade-Manager-V3-source.zip', 'SHA256SUMS.txt']) {
+              const existing = release.assets.find(asset => asset.name === name);
+              if (existing) await github.rest.repos.deleteReleaseAsset({owner, repo, asset_id: existing.id});
+              const data = fs.readFileSync(`dist/${name}`);
+              await github.rest.repos.uploadReleaseAsset({owner, repo, release_id: release.id, name, data,
+                headers: {'content-type': name.endsWith('.zip') ? 'application/zip' : 'text/plain', 'content-length': data.length}});
+            }
+            await github.rest.repos.updateRelease({owner, repo, release_id: release.id,
+              body, draft: false, prerelease: true, make_latest: 'false'});
+            core.info(`Published https://github.com/${owner}/${repo}/releases/tag/${tag}`);

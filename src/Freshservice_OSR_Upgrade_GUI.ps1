@@ -16,7 +16,9 @@ Add-Type -AssemblyName System.Drawing
 [Windows.Forms.Application]::EnableVisualStyles()
 Import-Module (Join-Path $PSScriptRoot 'OSR.Upgrade.Core.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'OSR.Recovery.WindowsServerBackup.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'OSR.Recovery.LabFiles.psm1') -Force
 $script:GuiScriptPath = $PSCommandPath
+$script:ApplicationTitle = 'Freshservice OSR Upgrade Manager - V3 Preview'
 $script:RestoringSession = $false
 $script:ElevationStarted = $false
 
@@ -29,11 +31,13 @@ $script:DryRunIndex = 0
 $script:DryRunStages = @()
 $script:DryRunTests = @()
 $script:DryRunStartedAt = $null
-$script:RunBase = Join-Path $env:ProgramData 'FreshworksOSRUpgradeManager\Runs'
+$script:UpgradeRunBase = Join-Path $env:ProgramData 'FreshworksOSRUpgradeManager\Runs'
+$script:LabRunBase = Join-Path $env:SystemDrive 'OSRLab\Runs'
+$script:RunBase = $script:UpgradeRunBase
 $script:WorkerPath = Join-Path $PSScriptRoot 'OSR.Upgrade.Worker.ps1'
 
 $form = New-Object Windows.Forms.Form
-$form.Text = 'Freshservice OSR Upgrade Manager'
+$form.Text = $script:ApplicationTitle
 $form.Size = New-Object Drawing.Size(1030,868)
 $form.MinimumSize = New-Object Drawing.Size(990,875)
 $form.StartPosition = 'CenterScreen'
@@ -171,15 +175,125 @@ $script:lstLog=New-Object Windows.Forms.ListBox
 $script:lstLog.Location=New-Object Drawing.Point(25,683)
 $script:lstLog.Size=New-Object Drawing.Size(954,128)
 $script:lstLog.HorizontalScrollbar=$true
+$script:lstLog.SelectionMode='MultiExtended'
+$script:lstLog.IntegralHeight=$false
 $script:lstLog.Font=New-Object Drawing.Font('Consolas',9)
 $form.Controls.Add($script:lstLog)
+
+# Leave room for an explicit operation selector without overlapping existing rows.
+foreach ($control in $form.Controls) {
+    if ($control.Top -ge 90) { $control.Top += 40 }
+}
+$form.Size = New-Object Drawing.Size(1030,930)
+$form.MinimumSize = New-Object Drawing.Size(990,875)
+$form.AutoScroll = $true
+$form.Controls.Add((New-Label 'Operation' 25 88 240 24))
+$script:cboOperation = New-Object Windows.Forms.ComboBox
+$script:cboOperation.DropDownStyle = 'DropDownList'
+$script:cboOperation.Location = New-Object Drawing.Point(270,85)
+$script:cboOperation.Size = New-Object Drawing.Size(248,26)
+[void]$script:cboOperation.Items.Add('Upgrade')
+[void]$script:cboOperation.Items.Add('Lab Repair (same version)')
+$script:cboOperation.SelectedIndex = 0
+$form.Controls.Add($script:cboOperation)
+$script:lblLabComputer = New-Label 'Lab guest computer name' 535 88 195 24
+$script:txtLabComputer = New-TextBox 740 85 239 26
+$form.Controls.AddRange(@($script:lblLabComputer,$script:txtLabComputer))
+
+# Stretch input rows horizontally and give additional vertical space to logs.
+$form.Size = New-Object Drawing.Size(1030,970)
+foreach ($control in $form.Controls) {
+    if ($control -is [Windows.Forms.TextBox] -or $control -is [Windows.Forms.CheckBox]) {
+        $control.Anchor = 'Top, Left, Right'
+    }
+}
+foreach ($control in @($script:btnMsi,$script:btnPrevious,$script:btnInstall,$script:btnRecoveryRoot,$script:btnAutoFind,$script:lblPrivilege)) {
+    $control.Anchor = 'Top, Right'
+}
+foreach ($control in @($title,$subtitle,$script:lblMode,$script:lblStatus,$script:progress)) {
+    $control.Anchor = 'Top, Left, Right'
+}
+$script:logPanel = New-Object Windows.Forms.Panel
+$script:logPanel.Location = New-Object Drawing.Point(25,723)
+$script:logPanel.Size = New-Object Drawing.Size(954,168)
+$script:logPanel.Anchor = 'Top, Bottom, Left, Right'
+$form.Controls.Add($script:logPanel)
+$script:lstLog.Dock = 'Fill'
+$script:logPanel.Controls.Add($script:lstLog)
+$script:logToolbar = New-Object Windows.Forms.ToolStrip
+$script:logToolbar.GripStyle = 'Hidden'
+$script:logToolbar.Dock = 'Top'
+$script:btnCopySelectedLogs = New-Object Windows.Forms.ToolStripButton('Copy selected')
+$script:btnCopyAllLogs = New-Object Windows.Forms.ToolStripButton('Copy all logs')
+$script:lblLogCopy = New-Object Windows.Forms.ToolStripLabel('Ctrl+C: copy selected | Ctrl+A: select all')
+[void]$script:logToolbar.Items.Add($script:btnCopySelectedLogs)
+[void]$script:logToolbar.Items.Add($script:btnCopyAllLogs)
+[void]$script:logToolbar.Items.Add((New-Object Windows.Forms.ToolStripSeparator))
+[void]$script:logToolbar.Items.Add($script:lblLogCopy)
+$script:logPanel.Controls.Add($script:logToolbar)
+$script:lstLog.BringToFront()
+
+function Get-GuiLogText([switch]$SelectedOnly) {
+    $lines = if ($SelectedOnly) { @($script:lstLog.SelectedItems) } else { @($script:lstLog.Items) }
+    return (($lines | ForEach-Object { [string]$_ }) -join [Environment]::NewLine)
+}
+function Set-GuiClipboardText([string]$Text) {
+    [Windows.Forms.Clipboard]::SetText($Text,[Windows.Forms.TextDataFormat]::UnicodeText)
+}
+function Copy-GuiLog([switch]$SelectedOnly) {
+    $text = Get-GuiLogText -SelectedOnly:$SelectedOnly
+    if ([string]::IsNullOrEmpty($text)) {
+        $script:lblLogCopy.Text = 'No log lines to copy.'
+        return
+    }
+    try {
+        Set-GuiClipboardText -Text $text
+        $script:lblLogCopy.Text = 'Copied to clipboard. Ctrl+A selects all log lines.'
+    } catch {
+        $script:lblLogCopy.Text = 'Clipboard unavailable. Try copying again.'
+    }
+}
+function Select-AllGuiLogs {
+    $script:lstLog.BeginUpdate()
+    try {
+        for ($index=0; $index -lt $script:lstLog.Items.Count; $index++) {
+            $script:lstLog.SetSelected($index,$true)
+        }
+    } finally { $script:lstLog.EndUpdate() }
+}
+$script:btnCopySelectedLogs.Add_Click({ Copy-GuiLog -SelectedOnly })
+$script:btnCopyAllLogs.Add_Click({ Copy-GuiLog })
+$script:lstLog.Add_KeyDown({
+    if ($_.Control -and $_.KeyCode -eq [Windows.Forms.Keys]::C) {
+        Copy-GuiLog -SelectedOnly
+        $_.SuppressKeyPress=$true
+    } elseif ($_.Control -and $_.KeyCode -eq [Windows.Forms.Keys]::A) {
+        Select-AllGuiLogs
+        $_.SuppressKeyPress=$true
+    }
+})
+$script:logMenu = New-Object Windows.Forms.ContextMenuStrip
+$copySelectedMenu = $script:logMenu.Items.Add('Copy selected (Ctrl+C)')
+$copySelectedMenu.Add_Click({ Copy-GuiLog -SelectedOnly })
+$copyAllMenu = $script:logMenu.Items.Add('Copy all logs')
+$copyAllMenu.Add_Click({ Copy-GuiLog })
+$selectAllMenu = $script:logMenu.Items.Add('Select all (Ctrl+A)')
+$selectAllMenu.Add_Click({ Select-AllGuiLogs })
+$script:lstLog.ContextMenuStrip=$script:logMenu
+
+function Get-GuiOperation {
+    if ($script:cboOperation.SelectedIndex -eq 0) { return 'Upgrade' }
+    if ($script:cboOperation.SelectedIndex -eq 1) { return 'LabRepair' }
+    throw 'Select a supported operation.'
+}
 
 function Set-GuiBusy([bool]$Busy) {
     foreach ($control in @($script:txtMsi,$script:txtPrevious,$script:txtInstall,
         $script:txtRecoveryRoot,$script:txtSHA,$script:txtPreviousSHA,
         $script:txtMandatory,$script:txtMore,$script:chkDryRun,$script:chkApproval,$script:chkRecovery,
         $script:btnMsi,$script:btnPrevious,$script:btnInstall,$script:btnRecoveryRoot,
-        $script:btnPreflight,$script:btnStart,$script:btnAutoFind,$script:btnBackupCheck)) { $control.Enabled = -not $Busy }
+        $script:btnPreflight,$script:btnStart,$script:btnAutoFind,$script:btnBackupCheck,
+        $script:cboOperation,$script:txtLabComputer)) { $control.Enabled = -not $Busy }
 }
 function Get-Questions {
     $q=@()
@@ -207,6 +321,15 @@ function Get-GuiWindowsBackupAssessment {
 }
 
 function Find-RecoveryInstallerInGui {
+    if ((Get-GuiOperation) -eq 'LabRepair') {
+        $installed = Get-OsrProduct
+        $package = Get-OsrMsiMetadata -Path $script:txtMsi.Text.Trim()
+        $evidence = Assert-OsrPackageAuthenticity -Path $package.Path -ExpectedSha256 $script:txtSHA.Text.Trim()
+        Assert-OsrSameVersionRepair -InstalledProduct $installed -Package $package
+        $script:txtPrevious.Text = $package.Path
+        $script:lblStatus.Text = 'Lab repair uses the verified original MSI for the installed version. Restoration remains unverified.'
+        return [pscustomobject]@{Found=$true;Verified=$true;Path=$package.Path;Verification=$evidence.Signature}
+    }
     $app=$null
     try {$app=Get-OsrProduct}
     catch {throw ('Cannot detect installed Orchestration Server: '+$_.Exception.Message)}
@@ -253,6 +376,8 @@ function Export-GuiResumeState {
     # Do not add credentials, backup secrets, or tokens to this payload.
     $state = @{
         FormatVersion = 1
+        Operation = Get-GuiOperation
+        LabExpectedComputerName = [string]$script:txtLabComputer.Text
         NewMsi = [string]$script:txtMsi.Text
         PreviousMsi = [string]$script:txtPrevious.Text
         InstallationDirectory = [string]$script:txtInstall.Text
@@ -281,6 +406,10 @@ function Restore-GuiResumeState([string]$EncodedState) {
     if ([int]$state.FormatVersion -ne 1) { throw 'Unsupported elevation state format.' }
     $script:RestoringSession = $true
     try {
+        $operation = [string]$state.Operation
+        if ($operation -notin @('','Upgrade','LabRepair')) { throw 'Unsupported operation in elevation state.' }
+        $script:cboOperation.SelectedIndex = if ($operation -eq 'LabRepair') { 1 } else { 0 }
+        $script:txtLabComputer.Text = [string]$state.LabExpectedComputerName
         $script:txtMsi.Text = [string]$state.NewMsi
         $script:txtPrevious.Text = [string]$state.PreviousMsi
         $script:txtInstall.Text = [string]$state.InstallationDirectory
@@ -292,7 +421,7 @@ function Restore-GuiResumeState([string]$EncodedState) {
         $script:chkApproval.Checked = [bool]$state.MaintenanceApproved
         $script:chkRecovery.Checked = [bool]$state.RecoveryValidated
         $script:chkDryRun.Checked = $false
-        $form.Text = 'Freshservice OSR Upgrade Manager [Administrator]'
+        $form.Text = $script:ApplicationTitle + ' [Administrator]'
         $script:lblStatus.Text = 'Administrator privileges confirmed. Live mode is available.'
     } finally {
         $script:RestoringSession = $false
@@ -302,7 +431,7 @@ function Request-GuiElevation {
     if (Test-OsrAdministrator) { return $true }
     $payload = Export-GuiResumeState
     $powershellExe = Join-Path $PSHOME 'powershell.exe'
-    $args = '-NoProfile -STA -File "{0}" -ResumeState "{1}"' -f $script:GuiScriptPath,$payload
+    $args = '-NoProfile -STA -ExecutionPolicy RemoteSigned -File "{0}" -ResumeState "{1}"' -f $script:GuiScriptPath,$payload
     try {
         $elevated = Start-Process -FilePath $powershellExe -ArgumentList $args -Verb RunAs -PassThru -ErrorAction Stop
         if (-not $elevated) { throw 'Windows did not return an elevated process.' }
@@ -318,32 +447,45 @@ function Request-GuiElevation {
         return $false
     }
 }
-function New-Run([string]$Mode) {
-    if ($script:chkDryRun.Checked) { throw 'Dry Run is active; deployment worker is disabled.' }
-    if (-not (Test-OsrAdministrator)) { throw 'Live operations require an elevated Administrator session.' }
-    if($script:ChildProcess -and -not $script:ChildProcess.HasExited){throw 'Another run is already active.'}
-    if(-not (Test-Path -LiteralPath $script:WorkerPath)){throw 'Worker script missing.'}
-    $questions=Get-Questions
-    if($Mode -eq 'Deploy') {
-        if(-not $script:chkApproval.Checked){throw 'Confirm the approved maintenance window.'}
-        if(-not $script:chkRecovery.Checked){throw 'Confirm independently validated downgrade and restoration.'}
-    }
-    $script:RunBase = [IO.Path]::GetFullPath($script:txtRecoveryRoot.Text.Trim())
-    $runName=('Run-{0}-{1}' -f (Get-Date -Format 'yyyyMMdd-HHmmss'),([guid]::NewGuid().ToString('N').Substring(0,8)))
-    $script:CurrentRun=Join-Path $script:RunBase $runName
-    [void](New-Item -Path $script:CurrentRun -ItemType Directory -Force)
-    Protect-RunDirectory $script:CurrentRun
-    $cfg=@{
+function Get-GuiRunConfiguration([object[]]$Questions) {
+    $lab = (Get-GuiOperation) -eq 'LabRepair'
+    return @{
         MsiPath=$script:txtMsi.Text.Trim()
         PreviousMsiPath=$script:txtPrevious.Text.Trim()
         InstallDirectory=$script:txtInstall.Text.Trim()
         BackupRoot=$script:RunBase
         ExpectedSha256=$script:txtSHA.Text.Trim()
         PreviousSha256=$script:txtPreviousSHA.Text.Trim()
-        Questions=$questions
+        Questions=$Questions
         MaintenanceApproved=[bool]$script:chkApproval.Checked
-        RecoveryProcedureValidated=[bool]$script:chkRecovery.Checked
+        RecoveryProcedureValidated=((-not $lab) -and [bool]$script:chkRecovery.Checked)
+        LabCheckpointConfirmed=($lab -and [bool]$script:chkRecovery.Checked)
+        LabExpectedComputerName=$script:txtLabComputer.Text.Trim()
     }
+}
+function New-Run([string]$Mode) {
+    if ($script:chkDryRun.Checked) { throw 'Dry Run is active; deployment worker is disabled.' }
+    if (-not (Test-OsrAdministrator)) { throw 'Live operations require an elevated Administrator session.' }
+    if($script:ChildProcess -and -not $script:ChildProcess.HasExited){throw 'Another run is already active.'}
+    if(-not (Test-Path -LiteralPath $script:WorkerPath)){throw 'Worker script missing.'}
+    $questions=Get-Questions
+    $operation = Get-GuiOperation
+    $lab = $operation -eq 'LabRepair'
+    if ($lab) {
+        Assert-OsrLabEnvironment -ExpectedComputerName $script:txtLabComputer.Text.Trim() -System (Get-CimInstance Win32_ComputerSystem -ErrorAction Stop)
+        if (-not $script:chkRecovery.Checked) { throw 'Confirm the current host-side baseline checkpoint for this dedicated lab guest.' }
+    }
+    if($Mode -eq 'Deploy') {
+        if(-not $script:chkApproval.Checked){throw 'Confirm the approved maintenance window.'}
+        if(-not $lab -and -not $script:chkRecovery.Checked){throw 'Confirm independently validated downgrade and restoration.'}
+    }
+    $script:RunBase = [IO.Path]::GetFullPath($script:txtRecoveryRoot.Text.Trim())
+    $runName=('Run-{0}-{1}' -f (Get-Date -Format 'yyyyMMdd-HHmmss'),([guid]::NewGuid().ToString('N').Substring(0,8)))
+    $script:CurrentRun=Join-Path $script:RunBase $runName
+    if ($lab) { Assert-OsrLabPaths -Source $script:txtInstall.Text.Trim() -Destination $script:CurrentRun }
+    [void](New-Item -Path $script:CurrentRun -ItemType Directory -Force)
+    Protect-RunDirectory $script:CurrentRun
+    $cfg=Get-GuiRunConfiguration -Questions $questions
     $configPath=Join-Path $script:CurrentRun 'settings.json'
     [IO.File]::WriteAllText($configPath,($cfg | ConvertTo-Json -Depth 5),[Text.Encoding]::UTF8)
     $script:CurrentPrompt=$null
@@ -353,8 +495,8 @@ function New-Run([string]$Mode) {
     $script:lblStatus.Text="Starting $Mode..."
     Set-GuiBusy $true
     $powershellExe=Join-Path $PSHOME 'powershell.exe'
-    $arg='-NoProfile -File "{0}" -Mode {1} -RunDirectory "{2}" -ConfigurationPath "{3}"' -f `
-        $script:WorkerPath,$Mode,$script:CurrentRun,$configPath
+    $arg='-NoProfile -ExecutionPolicy RemoteSigned -File "{0}" -Mode {1} -RunDirectory "{2}" -ConfigurationPath "{3}" -Operation {4}' -f `
+        $script:WorkerPath,$Mode,$script:CurrentRun,$configPath,$operation
     $pi=New-Object Diagnostics.ProcessStartInfo
     $pi.FileName=$powershellExe
     $pi.Arguments=$arg
@@ -476,8 +618,13 @@ function Inspect-DryRunReadOnly {
         try {
             $msi=Get-OsrMsiMetadata -Path $item.Path
             Add-DryRunLog ($item.Name+' | '+$msi.Version+' | SHA-256: '+$msi.Sha256)
-            if($installed -and $item.Name -eq 'New installer' -and $msi.Version -le $installed.Version){
-                Add-DryRunLog 'NOTICE: selected new installer is not newer than installed OSR.'
+            if($installed -and $item.Name -eq 'New installer'){
+                if ((Get-GuiOperation) -eq 'LabRepair') {
+                    Assert-OsrSameVersionRepair -InstalledProduct $installed -Package $msi
+                    Add-DryRunLog 'Lab repair MSI matches the installed version and ProductCode.'
+                } elseif ($msi.Version -le $installed.Version) {
+                    Add-DryRunLog 'NOTICE: selected new installer is not newer than installed OSR.'
+                }
             }
             if($installed -and $item.Name -eq 'Previous installer' -and $msi.Version -ne $installed.Version){
                 Add-DryRunLog 'NOTICE: previous installer version differs from installed OSR.'
@@ -516,12 +663,13 @@ function Start-DryRunAcceptance {
         if($answer -ne [Windows.Forms.DialogResult]::Yes) {
             Add-DryRunLog ('Functional test simulated as '+$answer+'.')
             $restore=[Windows.Forms.MessageBox]::Show($form,
-                'DRY RUN: Simulate restoring the previous OSR version? No services, files, registry or MSI will be modified.',
+                'DRY RUN: Simulate restoring the captured OSR baseline? No services, files, registry or MSI will be modified.',
                 'Dry Run - rollback decision',[Windows.Forms.MessageBoxButtons]::YesNo,
                 [Windows.Forms.MessageBoxIcon]::Question)
             if($restore -eq [Windows.Forms.DialogResult]::Yes){
                 Show-DryRunProgress 'ROLLBACK' 'Would stop Freshworks services and execute the integrated recovery procedure (SIMULATED).' 94
-                Show-DryRunProgress 'RESTORE' 'Would restore the previous MSI and backed-up configuration (SIMULATED).' 97
+                $restoreMessage=if((Get-GuiOperation) -eq 'LabRepair'){'Would verify the captured file tree, restore it with its permissions, and compare hashes (SIMULATED).'}else{'Would restore the previous MSI and backed-up configuration (SIMULATED).'}
+                Show-DryRunProgress 'RESTORE' $restoreMessage 97
                 Show-DryRunProgress 'HEALTH' 'Would restart both services and request recovery acceptance (SIMULATED).' 99
                 $recoveryAccepted=[Windows.Forms.MessageBox]::Show($form,
                     'DRY RUN: Simulate that the previous OSR installation is operational after recovery?',
@@ -537,7 +685,7 @@ function Start-DryRunAcceptance {
         }
         Add-DryRunLog 'Functional acceptance answered YES (simulation only).'
     }
-    Stop-DryRun 'SIMULATED UPGRADE ACCEPTED'
+    Stop-DryRun $(if((Get-GuiOperation) -eq 'LabRepair'){'SIMULATED LAB REPAIR ACCEPTED'}else{'SIMULATED UPGRADE ACCEPTED'})
 }
 function Start-DryRun([bool]$PreflightOnly) {
     if($script:DryRunActive -or ($script:ChildProcess -and -not $script:ChildProcess.HasExited)) {
@@ -561,6 +709,11 @@ function Start-DryRun([bool]$PreflightOnly) {
             @{Stage='START_SERVICES';Message='Would start Orchestration Server and Orchestration Server - WinRM_SSH (SIMULATED).';Percent=72},
             @{Stage='HEALTH';Message='Would validate installed version and both Windows services (SIMULATED).';Percent=83}
         )
+        if ((Get-GuiOperation) -eq 'LabRepair') {
+            $script:DryRunStages[0].Message = 'Would verify the named Hyper-V lab guest, checkpoint confirmation, exact MSI version and ProductCode (SIMULATED).'
+            $script:DryRunStages[3].Message = 'Would capture installation files, directory permissions and original MSI, then verify hashes (SIMULATED).'
+            $script:DryRunStages[4].Message = 'Would repair the same OSR version using /fomus with no automatic reboot (SIMULATED).'
+        }
         $script:DryRunIndex=0
         $script:dryTimer.Start()
     } catch {
@@ -575,17 +728,24 @@ function Update-GuiMode {
     if ($elevated) {
         $script:lblPrivilege.Text = 'SESSION: ADMINISTRATOR'
         $script:lblPrivilege.ForeColor = [Drawing.Color]::FromArgb(18,112,72)
-        $form.Text = 'Freshservice OSR Upgrade Manager [Administrator]'
+        $form.Text = $script:ApplicationTitle + ' [Administrator]'
     } else {
         $script:lblPrivilege.Text = 'SESSION: STANDARD USER'
         $script:lblPrivilege.ForeColor = [Drawing.Color]::FromArgb(162,89,22)
-        $form.Text = 'Freshservice OSR Upgrade Manager'
+        $form.Text = $script:ApplicationTitle
     }
     $dry=[bool]$script:chkDryRun.Checked
-    $script:btnStart.Text=if($dry){'Start dry run'}else{'START REAL UPGRADE'}
+    $lab = (Get-GuiOperation) -eq 'LabRepair'
+    $script:btnStart.Text=if($dry){'Start dry run'}elseif($lab){'START LAB REPAIR'}else{'START REAL UPGRADE'}
+    $script:lblLabComputer.Visible=$lab
+    $script:txtLabComputer.Visible=$lab
+    $script:chkApproval.Text=if($lab){'I authorize this same-version repair test on the dedicated lab guest.'}else{'I confirm the approved maintenance window and authorized production change.'}
+    $script:chkRecovery.Text=if($lab){'I confirm a current host-side baseline checkpoint exists. Application restoration is still under test.'}else{'I confirm the downgrade/recovery procedure for these OSR versions was independently tested.'}
     $script:btnPreflight.Text=if($dry){'Read-only preflight'}else{'Run preflight'}
     $script:lblMode.Text=if($dry){
         'DRY RUN ACTIVE: only read-only discovery; upgrade, backups and recovery are SIMULATED.'
+    }elseif($lab){
+        'LIVE LAB REPAIR: only the named Hyper-V guest; file restoration is experimental. No cross-version validation.'
     }else{
         'LIVE MODE [ADMINISTRATOR]: backup, service control, installation and recovery CAN MODIFY THIS SERVER.'
     }
@@ -650,6 +810,22 @@ $script:btnAutoFind.Add_Click({
     try { [void](Find-RecoveryInstallerInGui) }
     catch {[void][Windows.Forms.MessageBox]::Show($form,$_.Exception.Message,'Recovery discovery')}
 })
+$script:cboOperation.Add_SelectedIndexChanged({
+    if ($script:RestoringSession) { return }
+    $script:chkApproval.Checked=$false
+    $script:chkRecovery.Checked=$false
+    $script:chkDryRun.Checked=$true
+    if ($script:txtRecoveryRoot.Text -in @($script:UpgradeRunBase,$script:LabRunBase)) {
+        $script:txtRecoveryRoot.Text=if((Get-GuiOperation) -eq 'LabRepair'){$script:LabRunBase}else{$script:UpgradeRunBase}
+    }
+    $upgradeQuestion='Does a native Freshservice orchestration action succeed on a known-working target?'
+    $labQuestion='Are both Freshworks services running, OSR version unchanged, and expected configuration present after repair?'
+    if ($script:txtMandatory.Text -in @($upgradeQuestion,$labQuestion)) {
+        $script:txtMandatory.Text=if((Get-GuiOperation) -eq 'LabRepair'){$labQuestion}else{$upgradeQuestion}
+    }
+    $script:lblStatus.Text='Operation changed. Dry Run is enabled; live approvals were cleared.'
+    Update-GuiMode
+})
 $script:chkDryRun.Add_CheckedChanged({
     if ($script:RestoringSession -or $script:DryRunActive) { return }
     if (-not $script:chkDryRun.Checked) {
@@ -671,6 +847,8 @@ $script:chkDryRun.Add_CheckedChanged({
             if (-not $script:ElevationStarted) { $script:chkDryRun.Checked = $true }
             return
         }
+    } else {
+        $script:lblStatus.Text = 'Dry Run enabled. Operations are simulated; existing session privileges are unchanged.'
     }
     Update-GuiMode
 })
@@ -684,7 +862,10 @@ $script:btnStart.Add_Click({
         return
     }
     $warning='LIVE UPGRADE: Freshworks services will be stopped and the OSR MSI will be installed. The previous MSI will be auto-discovered when possible. If a verified recovery package and a validated downgrade path are unavailable, the deployment is blocked. This may interrupt automations. Continue with the authorized change?'
-    if([Windows.Forms.MessageBox]::Show($form,$warning,'LIVE upgrade confirmation',
+    if ((Get-GuiOperation) -eq 'LabRepair') {
+        $warning='LIVE LAB REPAIR: stop both Freshworks services, capture the installation tree, and repair the same MSI version. A named Hyper-V guest and an existing baseline checkpoint are required. If you reject the result, the GUI can offer experimental file restoration. Registry and external dependencies are outside this test. Continue with the authorized lab test?'
+    }
+    if([Windows.Forms.MessageBox]::Show($form,$warning,'LIVE operation confirmation',
         [Windows.Forms.MessageBoxButtons]::YesNo,[Windows.Forms.MessageBoxIcon]::Warning) -ne [Windows.Forms.DialogResult]::Yes){return}
     try{New-Run 'Deploy'}catch{[void][Windows.Forms.MessageBox]::Show($form,$_.Exception.Message,'Deployment blocked')}
 })
@@ -721,7 +902,7 @@ if (-not [string]::IsNullOrWhiteSpace($ResumeState)) {
     }
 }
 if (Test-OsrAdministrator) {
-    $form.Text = 'Freshservice OSR Upgrade Manager [Administrator]'
+    $form.Text = $script:ApplicationTitle + ' [Administrator]'
 }
 Update-GuiMode
 [void]$form.ShowDialog()

@@ -3,11 +3,13 @@
 param(
     [Parameter(Mandatory)][ValidateSet('Preflight','Deploy')][string]$Mode,
     [Parameter(Mandatory)][string]$RunDirectory,
-    [Parameter(Mandatory)][string]$ConfigurationPath
+    [Parameter(Mandatory)][string]$ConfigurationPath,
+    [ValidateSet('Upgrade','LabRepair')][string]$Operation = 'Upgrade'
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 Import-Module (Join-Path $PSScriptRoot 'OSR.Upgrade.Core.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'OSR.Recovery.LabFiles.psm1') -Force
 
 $runDir = [IO.Path]::GetFullPath($RunDirectory)
 [void](New-Item -Path $runDir -ItemType Directory -Force)
@@ -16,15 +18,19 @@ $stateFile = Join-Path $runDir 'state.json'
 $responseFile = Join-Path $runDir 'response.json'
 $logFile = Join-Path $runDir 'activity.log'
 $reportFile = Join-Path $runDir 'report.json'
-$msiLog = Join-Path $runDir 'upgrade-msi.log'
+$msiLog = Join-Path $runDir $(if($Operation -eq 'LabRepair'){'repair-msi.log'}else{'upgrade-msi.log'})
 $backupPath = Join-Path $runDir 'recovery-point'
 $before = $null; $after = $null; $target = $null; $previous = $null
 $recoveryReady = $false; $stoppedForBackup = $false; $deploymentStarted = $false
+$isLabRepair = $Operation -eq 'LabRepair'
+$labInventory = $null
 $script:Report = [ordered]@{
-    Mode=$Mode; Host=$env:COMPUTERNAME; StartedAt=(Get-Date).ToString('o')
+    Mode=$Mode; Operation=$Operation; Host=$env:COMPUTERNAME; StartedAt=(Get-Date).ToString('o')
     CurrentVersion=$null; TargetVersion=$null; PreviousMsiVersion=$null
     NewInstallerSHA256=$null; RecoveryPoint=$null; MsiExitCode=$null
     PreviousMsiAutoDiscovered=$false; RecoveryProvider='UNDETERMINED'
+    BackupIntegrity='NOT_VERIFIED'; LabFileRestoreVerified=$false; CrossVersionRollbackValidated=$false
+    LabPathAssessment=$null
     Tests=@(); Rollback='NOT_REQUESTED'; Status='RUNNING'; FinishedAt=$null
 }
 
@@ -76,6 +82,14 @@ function Require-BasicPreflight {
     Update-Progress 'PREFLIGHT' 'Checking Windows administration privileges and OSR installation...' 5
     if (-not (Test-OsrAdministrator)) { throw 'Run the application as an elevated administrator.' }
     if ($env:OS -ne 'Windows_NT') { throw 'Windows is required.' }
+    if ($isLabRepair) {
+        Assert-OsrLabEnvironment -ExpectedComputerName ([string]$config.LabExpectedComputerName) -System (Get-CimInstance Win32_ComputerSystem -ErrorAction Stop)
+        Assert-OsrLabPaths -Source ([string]$config.InstallDirectory) -Destination $runDir
+        Protect-OsrLabDirectory -Path $runDir
+        if ($config.LabCheckpointConfirmed -isnot [bool] -or -not $config.LabCheckpointConfirmed) {
+            throw 'Lab Repair requires operator confirmation of an existing host-side baseline checkpoint.'
+        }
+    }
     $script:before = Get-OsrProduct
     $actualDir = Get-OsrInstallDirectory
     if (([IO.Path]::GetFullPath([string]$config.InstallDirectory)).TrimEnd('\') -ine ([IO.Path]::GetFullPath($actualDir)).TrimEnd('\')) {
@@ -87,6 +101,12 @@ function Require-BasicPreflight {
     Update-Progress 'PREFLIGHT' 'Inspecting Freshworks MSI packages and signatures...' 12
     $script:target = Get-OsrMsiMetadata -Path ([string]$config.MsiPath)
     $sig = Assert-OsrPackageAuthenticity -Path $target.Path -ExpectedSha256 ([string]$config.ExpectedSha256)
+    if ($isLabRepair) {
+        Assert-OsrSameVersionRepair -InstalledProduct $before -Package $target
+        if ([IO.Path]::GetFullPath($target.Path) -match '(?i)\\Windows\\Installer\\') { throw 'Lab Repair requires original media outside the Windows Installer cache.' }
+        $script:previous = $target.PSObject.Copy()
+        $script:Report.RecoveryProvider='LAB_SAME_VERSION_FILES'
+    } else {
     if ($target.Version -le $before.Version) { throw "Upgrade MSI $($target.Version) is not newer than installed $($before.Version)." }
     $previousPath=[string]$config.PreviousMsiPath
     if([string]::IsNullOrWhiteSpace($previousPath)) {
@@ -112,6 +132,7 @@ function Require-BasicPreflight {
         if (-not $previous.ProductCode) { throw 'Previous MSI ProductCode missing.' }
         $script:Report.RecoveryProvider='APPLICATION_MSI_VERIFIED'
     }
+    }
     Assert-OsrSafePath -InstallDirectory $actualDir -BackupRoot $runDir
     $oldPackagePath = if($previous){[IO.Path]::GetFullPath($previous.Path)}else{''}
     if($oldPackagePath -and $oldPackagePath.StartsWith(
@@ -131,10 +152,14 @@ function Require-BasicPreflight {
         throw 'No verified automatic recovery provider is available. Search found no complete, trusted original MSI. A VM indicator or Windows backup command alone does not prove that a restorable snapshot exists. Upgrade BLOCKED.'
     }
     if ($Mode -eq 'Deploy') {
-        if (-not [bool]$config.MaintenanceApproved) { throw 'Maintenance authorization must be confirmed before deployment.' }
-        if (-not [bool]$config.RecoveryProcedureValidated) {
+        if ($config.MaintenanceApproved -isnot [bool] -or -not $config.MaintenanceApproved) { throw 'Maintenance authorization must be confirmed before deployment.' }
+        if (-not $isLabRepair -and ($config.RecoveryProcedureValidated -isnot [bool] -or -not $config.RecoveryProcedureValidated)) {
             throw 'The specific downgrade/reinstallation recovery path has not been independently tested for this OSR version pair. Upgrade BLOCKED.'
         }
+    }
+    if ($isLabRepair) {
+        $script:Report.LabPathAssessment=Assert-OsrLabPathBudget -Source $actualDir -Destination (Join-Path $backupPath 'files')
+        Add-Log ('Lab backup paths checked before service control; longest destination path: ' + $script:Report.LabPathAssessment.LongestDestinationPath + ' characters.')
     }
     Update-Progress 'PREFLIGHT' 'MSI identity, versions, service state, and installation location verified.' 18
 }
@@ -153,13 +178,19 @@ function New-RecoveryPoint {
     }
     $script:previous.Path = $savedMsi
     $filesPath = Join-Path $backupPath 'files'
-    [void](Invoke-OsrRobocopy -Source $existingPath -Destination $filesPath -LogFile (Join-Path $runDir 'backup-robocopy.log'))
+    if ($isLabRepair) {
+        $script:labInventory = New-OsrLabFileSnapshot -Source $existingPath -Destination $filesPath
+        $script:Report.BackupIntegrity='INSTALLATION_TREE_VERIFIED'
+    } else {
+        [void](Invoke-OsrRobocopy -Source $existingPath -Destination $filesPath -LogFile (Join-Path $runDir 'backup-robocopy.log'))
+    }
     $manifest = [ordered]@{
         Version = "$($before.Version)"; InstallDirectory=$existingPath
         PreviousMsi=$previous.Path; PreviousMsiSha256=$previous.Sha256
         Services=@(Get-OsrServiceRecords | Select-Object Name,DisplayName,StartMode,StartName,PathName)
         CreatedAt=(Get-Date).ToString('o')
     }
+    if ($isLabRepair) { $manifest.Operation=$Operation; $manifest.LabFileInventory=$labInventory }
     Write-JsonAtomic (Join-Path $backupPath 'manifest.json') $manifest
     foreach($name in @('osr.conf','application.conf')) {
         $file = Join-Path $existingPath ('osr\config\'+$name)
@@ -176,10 +207,20 @@ function New-RecoveryPoint {
 }
 function Restore-IntegratedRecovery {
     $script:Report.Rollback='STARTED'
-    Update-Progress 'ROLLBACK' 'Restoring the earlier OSR version with the integrated recovery engine...' 77
+    Update-Progress 'ROLLBACK' $(if($isLabRepair){'Restoring the captured same-version lab file baseline...'}else{'Restoring the earlier OSR version with the integrated recovery engine...'}) 77
     try {
         $actual = Get-OsrProduct
-        if ($actual.Version -ne $before.Version) {
+        if ($isLabRepair) {
+            Assert-OsrLabEnvironment -ExpectedComputerName ([string]$config.LabExpectedComputerName) -System (Get-CimInstance Win32_ComputerSystem -ErrorAction Stop)
+            Assert-OsrSameVersionRepair -InstalledProduct $actual -Package $previous
+            $actualDirectory = Get-OsrInstallDirectory
+            if ([IO.Path]::GetFullPath($actualDirectory).TrimEnd('\') -ine [IO.Path]::GetFullPath([string]$config.InstallDirectory).TrimEnd('\')) {
+                throw 'Lab installation directory changed; restoration blocked.'
+            }
+            # Verify payload before stopping services, then again inside the restore.
+            Assert-OsrLabTreeEqual -Expected $labInventory -Actual (Get-OsrLabTreeInventory (Join-Path $backupPath 'files'))
+        }
+        if (-not $isLabRepair -and $actual.Version -ne $before.Version) {
             Stop-OsrServices
             if (-not $actual.ProductCode) { throw 'Cannot determine upgraded product code for MSI removal.' }
             Add-Log 'Removing upgraded version through Windows Installer.'
@@ -191,15 +232,21 @@ function Restore-IntegratedRecovery {
         }
         Stop-OsrServices
         $files = Join-Path $backupPath 'files'
-        [void](Invoke-OsrRobocopy -Source $files -Destination ([string]$config.InstallDirectory) -Mirror -LogFile (Join-Path $runDir 'rollback-files.log'))
+        if ($isLabRepair) {
+            Restore-OsrLabFileSnapshot -Source $files -Destination ([string]$config.InstallDirectory) -Inventory $labInventory
+            $script:Report.LabFileRestoreVerified=$true
+        } else {
+            [void](Invoke-OsrRobocopy -Source $files -Destination ([string]$config.InstallDirectory) -Mirror -LogFile (Join-Path $runDir 'rollback-files.log'))
+        }
         Start-OsrServices
         $confirmed = Get-OsrProduct
         if ($confirmed.Version -ne $before.Version) { throw "Restoration version mismatch: $($confirmed.Version) != $($before.Version)." }
         $script:Report.Rollback='TECHNICALLY_RESTORED'
-        $response = Await-Decision -Question 'Do the critical Freshservice orchestrations work after the restoration?' -Percent 94 -Stage 'RECOVERY_ACCEPTANCE'
+        $recoveryQuestion = if ($isLabRepair) { 'LAB: File hashes and permissions match the captured baseline. Are both Freshworks services running and the expected configuration present? No orchestration execution is required.' } else { 'Do the critical Freshservice orchestrations work after the restoration?' }
+        $response = Await-Decision -Question $recoveryQuestion -Percent 94 -Stage 'RECOVERY_ACCEPTANCE'
         if ($response -ne 'YES') { throw 'Recovery was not confirmed by the administrator.' }
-        $script:Report.Rollback='FUNCTIONALLY_RESTORED'
-        Save-Report 'ROLLED_BACK'
+        $script:Report.Rollback=if($isLabRepair){'LAB_FILES_RESTORED_OPERATOR_ACCEPTED'}else{'FUNCTIONALLY_RESTORED'}
+        Save-Report $(if($isLabRepair){'LAB_FILES_RESTORED'}else{'ROLLED_BACK'})
         Update-Progress 'DONE' 'Previous installation restored and operator-validated.' 100 'DONE'
     } catch {
         $script:Report.Rollback='FAILED_REQUIRES_OPERATOR'
@@ -223,15 +270,16 @@ function Invoke-ManualAcceptance {
     $qs = @($config.Questions)
     for ($i=0; $i -lt $qs.Count; $i++) {
         $question = $qs[$i]
-        $answer = Await-Decision -Question ("Test {0}/{1}: {2}`nPerform the test in Freshservice, then select Yes or No." -f ($i+1),$qs.Count,$question) -Percent (85 + [int](8*($i+1)/$qs.Count))
+        $instruction = if ($isLabRepair) { 'Inspect local lab state, then select Yes or No. No production workflow is required.' } else { 'Perform the test in Freshservice, then select Yes or No.' }
+        $answer = Await-Decision -Question ("Test {0}/{1}: {2}`n{3}" -f ($i+1),$qs.Count,$question,$instruction) -Percent (85 + [int](8*($i+1)/$qs.Count))
         $script:Report.Tests += @{Question=$question;Result= $(if($answer -eq 'YES'){'PASS'}else{'FAIL'});Time=(Get-Date).ToString('o')}
         if ($answer -ne 'YES') {
             Offer-Rollback -Reason "Functional test failed or was not confirmed: $question"
             return
         }
     }
-    Save-Report 'ACCEPTED'
-    Update-Progress 'DONE' 'Upgrade accepted after operator functional validation.' 100 'DONE'
+    Save-Report $(if($isLabRepair){'LAB_REPAIR_ACCEPTED'}else{'ACCEPTED'})
+    Update-Progress 'DONE' 'Operation accepted after operator validation. Review the report scope.' 100 'DONE'
 }
 
 try {
@@ -243,12 +291,17 @@ try {
     }
     Update-Progress 'BACKUP' 'Preparing offline OSR recovery point...' 20
     New-RecoveryPoint
-    Update-Progress 'INSTALL' 'Starting official Freshworks MSI upgrade...' 45
+    Update-Progress 'INSTALL' $(if($isLabRepair){'Starting same-version MSI lab repair...'}else{'Starting official Freshworks MSI upgrade...'}) 45
     if ((Get-FileHash -LiteralPath $target.Path -Algorithm SHA256).Hash -ine $target.Sha256) {
         throw 'The selected upgrade MSI changed after preflight.'
     }
     $script:deploymentStarted=$true
-    $code = Invoke-OsrMsi -Operation Install -Target $target.Path -LogFile $msiLog -Interactive
+    if ($isLabRepair) {
+        if ((Get-FileHash -LiteralPath $previous.Path -Algorithm SHA256).Hash -ine $previous.Sha256) { throw 'The saved repair MSI changed after capture.' }
+        $code = Invoke-OsrMsi -Operation Repair -Target $previous.Path -ExpectedSha256 $previous.Sha256 -LogFile $msiLog
+    } else {
+        $code = Invoke-OsrMsi -Operation Install -Target $target.Path -LogFile $msiLog -Interactive
+    }
     $script:Report.MsiExitCode=$code
     if ($code -notin @(0,3010)) { throw "MSI upgrade failed: exit code $code" }
     if ($code -eq 3010) {

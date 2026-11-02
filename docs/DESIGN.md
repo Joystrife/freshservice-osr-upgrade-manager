@@ -23,6 +23,8 @@ The design consists of four components:
 
 ## Recovery providers
 
+The main GUI and worker now distinguish `Upgrade` (default) from `LabRepair`. LabRepair permits only a matching MSI version and ProductCode in an explicitly named Hyper-V guest with lab authorization and checkpoint attestation. It uses the shared operator-decision channel for acceptance and experimental same-version file restoration. The new `OSR.Recovery.LabFiles.psm1` inventories and verifies files, directories and their security metadata. The production upgrade recovery gates remain separate. See [Integrated Lab Repair](INTEGRATED_LAB_REPAIR.md) for exact scope and the manual trial sequence.
+
 The recovery manager will eventually evaluate discovery, planning, backup creation, validation and restoration as independent stages. It must not select a provider solely on `Win32_ComputerSystem.Manufacturer` or other vendor labels.
 
 The Windows Server Backup provider introduced in v0.4 performs only **discovery and non-executing planning**. It reports candidate backup targets but does not mark them safe or restore-ready.

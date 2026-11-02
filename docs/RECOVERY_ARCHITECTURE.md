@@ -43,6 +43,17 @@ Not implemented:
 
 The **Check Windows backup** GUI button is read-only in both Dry Run and Live Mode. It does not change the Windows Backup schedule, services, disk settings or files.
 
+## Planned v0.5: Smart Application Backup
+
+The next provider increment is a targeted application backup, not execution of Windows Server Backup. See [Smart Application Backup](SMART_APPLICATION_BACKUP.md) for the proposed contracts, implementation sequence and test matrix. This design is not implemented in the current runtime.
+
+- `DISCOVER` and `PLAN` must remain read-only and keep Dry Run results in memory.
+- `PREPARE` requires explicit authorization and a protected destination before any application data is written or Freshworks service state is changed.
+- `VERIFY` must check source coverage and individual file integrity independently of copy exit codes. A verified copy is not evidence that restoration works.
+- `RESTORE` requires an independently tested procedure and explicit operator approval; no automatic restore is introduced by this planning work.
+
+Track application backup integrity, same-version restoration and cross-version rollback as separate evidence. Initialize production upgrade authorization as blocked. Neither a plan, a complete copy nor a same-version restore test may satisfy the existing version-pair recovery gate by itself. Cross-version rollback remains unverified until the required original media and lab evidence are available.
+
 ## Future Windows Server Backup preparation
 
 1. Select an approved, independent backup target; do not write to a volume being protected.
@@ -67,6 +78,7 @@ Future hands-free full-system rollback requires a separately running, authorized
 | --- | --- | --- | --- |
 | Windows Server Backup | Implemented (read-only) | Planned | Planned; WinRE/external controller |
 | Previous-version MSI + OSR files | Implemented | Implemented; real runtime unverified | Implemented; requires approved version-specific procedure |
+| Smart Application Backup | Planned for v0.5 | Planned; targeted protected application capture | Planned; independent validation required |
 | AWS EC2/EBS | Platform diagnostic only | Not implemented | Not implemented |
 | Hyper-V | Diagnostic only | Not implemented | Not implemented |
 | VMware | Not implemented | Not implemented | Not implemented |

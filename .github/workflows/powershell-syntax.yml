@@ -50,3 +50,24 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           & .\tests\Test-WindowsBackupProvider.ps1
+      - name: Regression tests - same-version lab repair
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tests\Test-SameVersionRepair.ps1
+      - name: Regression tests - Windows Installer metadata
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tests\Test-MsiMetadata.ps1
+      - name: Regression tests - lab file recovery and integrated worker
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tests\Test-LabFiles.ps1
+          & .\tests\Test-IntegratedLabWorker.ps1
+      - name: Regression tests - lab GUI controls
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tests\Test-GuiLabMode.ps1
