@@ -112,6 +112,16 @@ function Resolve-OsrLabChildPath {
     return $child
 }
 
+function ConvertTo-OsrLabComparableSecurity {
+    param([Parameter(Mandatory)][string]$Sddl)
+    $descriptor = New-Object Security.AccessControl.RawSecurityDescriptor($Sddl)
+    # Windows may set this bookkeeping bit when Set-Acl reapplies inherited ACEs.
+    # Keep owner, group, ACE order/flags/rights and inheritance protection intact.
+    $flags = $descriptor.ControlFlags -band (-bnot [Security.AccessControl.ControlFlags]::DiscretionaryAclAutoInherited)
+    $descriptor.SetFlags([Security.AccessControl.ControlFlags]$flags)
+    return $descriptor.GetSddlForm([Security.AccessControl.AccessControlSections]::All)
+}
+
 function Assert-OsrLabTreeEqual {
     param([Parameter(Mandatory)]$Expected,[Parameter(Mandatory)]$Actual,[switch]$Security)
     if ($Expected.SchemaVersion -ne 1 -or $Actual.SchemaVersion -ne 1) { throw 'Unsupported lab inventory schema.' }
@@ -132,9 +142,9 @@ function Assert-OsrLabTreeEqual {
         if ($entry.Directory -ne $other.Directory -or $entry.Length -ne $other.Length -or $entry.SHA256 -ne $other.SHA256) {
             throw 'Lab inventory content differs.'
         }
-        if ($Security -and $entry.SDDL -ne $other.SDDL) { throw 'Lab inventory permissions differ.' }
+        if ($Security -and (ConvertTo-OsrLabComparableSecurity $entry.SDDL) -cne (ConvertTo-OsrLabComparableSecurity $other.SDDL)) { throw 'Lab inventory permissions differ.' }
     }
-    if ($Security -and $Expected.RootSDDL -ne $Actual.RootSDDL) { throw 'Lab root permissions differ.' }
+    if ($Security -and (ConvertTo-OsrLabComparableSecurity $Expected.RootSDDL) -cne (ConvertTo-OsrLabComparableSecurity $Actual.RootSDDL)) { throw 'Lab root permissions differ.' }
 }
 
 function Copy-OsrLabTree {

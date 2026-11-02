@@ -10,6 +10,20 @@ function Assert-Throws([scriptblock]$Action,[string]$Label) {
     Write-Host ('PASS: rejected ' + $Label)
 }
 try {
+    $plain='O:BAG:BAD:(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)'
+    $auto='O:BAG:BAD:AI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)'
+    $expected=[pscustomobject]@{SchemaVersion=1;RootSDDL=$plain;Entries=@([pscustomobject]@{Path='fixture';Directory=$false;Length=1;SHA256='X';SDDL=$plain})}
+    $actual=[pscustomobject]@{SchemaVersion=1;RootSDDL=$auto;Entries=@([pscustomobject]@{Path='fixture';Directory=$false;Length=1;SHA256='X';SDDL=$auto})}
+    Assert-OsrLabTreeEqual $expected $actual -Security
+    foreach ($different in @('O:SYG:BAD:AI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)','O:BAG:SYD:AI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)','O:BAG:BAD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)','O:BAG:BAD:AI(A;OICI;FR;;;SY)(A;OICI;FA;;;BA)','O:BAG:BAD:AI(A;CI;FA;;;SY)(A;OICI;FA;;;BA)')) {
+        $actual.Entries[0].SDDL=$different
+        Assert-Throws { Assert-OsrLabTreeEqual $expected $actual -Security } 'changed owner, group, inheritance protection, rights or ACE flags'
+        $actual.Entries[0].SDDL=$auto
+        $actual.RootSDDL=$different
+        Assert-Throws { Assert-OsrLabTreeEqual $expected $actual -Security } 'changed root security'
+        $actual.RootSDDL=$auto
+    }
+    Write-Host 'PASS: ACL comparison tolerates only DACL auto-inherited bookkeeping'
     $source=Join-Path $testRoot 'source'
     $backup=Join-Path $testRoot 'backup'
     [void](New-Item -Path (Join-Path $source 'osr\empty') -ItemType Directory -Force)

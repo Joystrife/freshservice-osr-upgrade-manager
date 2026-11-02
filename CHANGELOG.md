@@ -58,3 +58,9 @@
 ## 0.1.0 — Initial development preview
 
 - Created the Windows Forms GUI, PowerShell worker and a basic integrated application recovery engine.
+
+### Release validation correction
+
+- Restore parent NTFS permissions before descendant permissions.
+- Compare complete security descriptors while normalizing only the Windows-managed DACL auto-inherited bookkeeping flag; owner, group, ACEs and inheritance protection remain verified.
+- Add synthetic regression cases for the CI-observed descriptor difference and security changes that must be rejected.
