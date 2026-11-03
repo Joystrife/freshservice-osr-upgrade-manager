@@ -1,0 +1,48 @@
+name: Promote tested 0.5.1 Release 3
+on:
+  push:
+    branches: ['release/promote-0.5.1-preview.3']
+permissions:
+  contents: read
+concurrency:
+  group: promote-tested-0-5-1-3
+  cancel-in-progress: false
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify immutable assets and promote publication metadata
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const crypto = require('crypto');
+            const {owner, repo} = context.repo;
+            const tag = 'v0.5.1-preview.3';
+            const expectedCommit = '8860481adf7c8cfd04d9cb4bb93023f7162e50aa';
+            const actual = (await github.rest.repos.getCommit({owner, repo, ref: tag})).data.sha;
+            if (actual !== expectedCommit) throw new Error('Published tag moved; refusing promotion');
+            const release = (await github.rest.repos.getReleaseByTag({owner, repo, tag})).data;
+            if (release.id !== 432679978 || release.draft) throw new Error('Unexpected publication');
+            const expected = {
+              'OSR-Upgrade-Manager-0.5.1-preview.3-portable.exe': 'a6e06ae339c10766cda00cdada435713710fd64ceeb377023e675ec968250be5',
+              'OSR-Upgrade-Manager-0.5.1-preview.3-source.zip': '1507c310b79403e599e25d61f80e94c9f57d9932dbd11471b74c5aa4a1885d68',
+              'SHA256SUMS.txt': '59d6397a7141e08ad0ddd1a1b099ed7fd6d98e49cc8a59ff5bbafffe498ee6ef'
+            };
+            if (release.assets.length !== Object.keys(expected).length) throw new Error('Unexpected asset set');
+            for (const [name, digest] of Object.entries(expected)) {
+              const asset = release.assets.find(x => x.name === name);
+              if (!asset || asset.digest !== 'sha256:' + digest) throw new Error('Asset digest changed: ' + name);
+              const response = await fetch(asset.browser_download_url);
+              if (!response.ok) throw new Error('Cannot verify asset download: ' + name);
+              const bytes = Buffer.from(await response.arrayBuffer());
+              if (crypto.createHash('sha256').update(bytes).digest('hex') !== digest) throw new Error('Downloaded asset changed: ' + name);
+            }
+            const body = fs.readFileSync('docs/RELEASE_0_5_1_FINAL.md', 'utf8');
+            await github.rest.repos.updateRelease({owner, repo, release_id: release.id,
+              name: '0.5.1 — Release 3: controlled replacement and application recovery',
+              body, draft: false, prerelease: false, make_latest: 'true'});
+            core.info('Promoted publication metadata; tag and all assets retained unchanged.');
