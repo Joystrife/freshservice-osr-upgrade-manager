@@ -15,10 +15,10 @@ foreach ($file in $files) {
 }
 Write-Host ('PASS: syntax for '+$files.Count+' source/test/build files')
 $tests=@(Get-ChildItem -LiteralPath (Join-Path $root 'tests') -Filter 'Test-*.ps1' -File | Sort-Object Name)
-if ($tests.Count -ne 8) { throw 'Expected the eight source and portable-launcher regression suites.' }
+if ($tests.Count -ne 9) { throw 'Expected the nine source and portable-launcher regression suites.' }
 foreach ($test in $tests) {
     Write-Host ('RUN '+$test.Name)
     & $runtime -NoProfile -STA -ExecutionPolicy RemoteSigned -File $test.FullName
     if ($LASTEXITCODE -ne 0) { throw ('Regression failed: '+$test.Name) }
 }
-Write-Host 'PASS: all eight Windows PowerShell 5.1 regression suites'
+Write-Host 'PASS: all nine Windows PowerShell 5.1 regression suites'

@@ -30,7 +30,7 @@ function New-FixtureZip([string[]]$Names) {
 try {
     $build=Join-Path $testRoot 'build'
     & (Join-Path $root 'scripts\Build-PortableExecutable.ps1') -OutputDirectory $build | Out-Null
-    $exe=Join-Path $build 'OSR-Upgrade-Manager-0.5.0-portable.exe'
+    $exe=Join-Path $build 'OSR-Upgrade-Manager-0.5.1-preview.3-portable.exe'
     $expectedExeHash=([IO.File]::ReadAllText((Join-Path $build 'SHA256SUMS.txt')).Trim() -split '\s+')[0]
     if ((Get-FileHash -LiteralPath $exe).Hash -ne $expectedExeHash) { throw 'Executable checksum differs.' }
     $assembly=[Reflection.Assembly]::Load([IO.File]::ReadAllBytes($exe))
@@ -49,7 +49,7 @@ try {
     $target=Join-Path $testRoot 'extracted'
     $first=Invoke-Extraction $payload $expectedPayloadHash $target
     $second=Invoke-Extraction $payload $expectedPayloadHash $target
-    if ($first -eq $second -or @(Get-ChildItem -LiteralPath $first -Recurse -File).Count -ne 8) { throw 'Each launch must extract eight files into a unique directory.' }
+    if ($first -eq $second -or @(Get-ChildItem -LiteralPath $first -Recurse -File).Count -ne 9) { throw 'Each launch must extract nine files into a unique directory.' }
     foreach ($file in @(Get-ChildItem -LiteralPath (Join-Path $first 'src') -File)) {
         if ((Get-FileHash -LiteralPath $file.FullName).Hash -ne (Get-FileHash -LiteralPath (Join-Path $root ('src\'+$file.Name))).Hash) { throw ('Packaged source differs: '+$file.Name) }
     }
@@ -63,7 +63,7 @@ try {
     $badTarget=Join-Path $testRoot 'must-not-exist'
     $tampered=[byte[]]$payload.Clone(); $tampered[0]=$tampered[0] -bxor 1
     Assert-Rejected { Invoke-Extraction $tampered $expectedPayloadHash $badTarget } 'corrupted payload before writes'
-    $names=@('src/Freshservice_OSR_Upgrade_GUI.ps1','src/OSR.Upgrade.Core.psm1','src/OSR.Upgrade.Worker.ps1','src/OSR.Recovery.LabFiles.psm1','src/OSR.Recovery.WindowsServerBackup.psm1','LICENSE','VERSION','README.md')
+    $names=@('src/Freshservice_OSR_Upgrade_GUI.ps1','src/OSR.Gui.Settings.psm1','src/OSR.Upgrade.Core.psm1','src/OSR.Upgrade.Worker.ps1','src/OSR.Recovery.LabFiles.psm1','src/OSR.Recovery.WindowsServerBackup.psm1','LICENSE','VERSION','README.md')
     foreach ($entries in @(
         @{Label='path traversal';Names=@('../escape.ps1')},
         @{Label='absolute path';Names=@('C:/escape.ps1')},

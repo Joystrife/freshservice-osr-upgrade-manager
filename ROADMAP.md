@@ -1,5 +1,16 @@
 # Product Roadmap
 
+## v0.5.1 preview — Controlled application replacement
+
+- [x] Explicit inspected 2.4 -> 2.5 replacement profile and identity-only migration scope.
+- [x] Verified original tree/security inventory and both installers before uninstall.
+- [x] Recovery from known or absent product registration, with manual review for ambiguous state.
+- [x] Short backup root, progress and encrypted safe-path preferences.
+- [x] One integrated Preview 3 replacement/recovery trial in the dedicated VM, including recovery acceptance; business workflows remain untested.
+- [ ] Proxy/custom-configuration migration and broader version-pair qualification.
+
+This preview reuses the application recovery sequence exercised independently in the lab. It does not implement OS snapshots or complete registry/external-dependency backup.
+
 The roadmap is intentionally staged. **A finished GUI or a successful syntax test does not establish that an upgrade or recovery procedure is safe in production.**
 
 ## v0.4.0 — Recovery-provider foundation (implemented)

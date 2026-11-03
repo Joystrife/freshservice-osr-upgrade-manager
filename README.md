@@ -1,5 +1,7 @@
 # Freshservice OSR Upgrade Manager
 
+**0.5.1 Preview 3 — experimental prerelease.** Adds controlled replacement for the inspected 2.4 -> 2.5 media pair, verified application-file recovery, a short default backup path and encrypted path preferences. One integrated replacement-and-rollback trial completed in the dedicated VM, with the lab entry ONLINE after both stages. AD workflows and production use remain unqualified. See [release scope and evidence](docs/RELEASE_0_5_1.md). [Download the EXE, source ZIP and checksums](https://github.com/Joystrife/freshservice-osr-upgrade-manager/releases/tag/v0.5.1-preview.3). The 0.5.0 information below is historical.
+
 
 **Environment-aware deployment and recovery management for the Freshworks Freshservice Orchestration Server.**
 

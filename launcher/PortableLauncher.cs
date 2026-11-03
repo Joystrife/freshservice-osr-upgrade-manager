@@ -10,9 +10,9 @@ using System.Text;
 using System.Windows.Forms;
 
 [assembly: AssemblyTitle("Freshservice OSR Upgrade Manager Portable Preview")]
-[assembly: AssemblyDescription("Portable launcher for the 0.5.0 PowerShell source distribution")]
-[assembly: AssemblyVersion("0.5.0.0")]
-[assembly: AssemblyFileVersion("0.5.0.0")]
+[assembly: AssemblyDescription("Portable launcher for the 0.5.1-preview.3 PowerShell source distribution")]
+[assembly: AssemblyVersion("0.5.1.2")]
+[assembly: AssemblyFileVersion("0.5.1.2")]
 
 internal static class PortableLauncher
 {
@@ -21,7 +21,7 @@ internal static class PortableLauncher
     private static readonly string[] RequiredFiles = {
         "src/Freshservice_OSR_Upgrade_GUI.ps1", "src/OSR.Upgrade.Core.psm1",
         "src/OSR.Upgrade.Worker.ps1", "src/OSR.Recovery.LabFiles.psm1",
-        "src/OSR.Recovery.WindowsServerBackup.psm1", "LICENSE", "VERSION", "README.md"
+        "src/OSR.Recovery.WindowsServerBackup.psm1", "src/OSR.Gui.Settings.psm1", "LICENSE", "VERSION", "README.md"
     };
 
     [STAThread]

@@ -9,7 +9,7 @@ The application requires an authorized, independently validated vendor downgrade
 path for automated recovery and an authentic prior-version MSI.
 No host/tenant/organization names are embedded in the program.
 #>
-param([string]$ResumeState = '')
+param([string]$ResumeState = '',[switch]$NoPreferences)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -17,8 +17,9 @@ Add-Type -AssemblyName System.Drawing
 Import-Module (Join-Path $PSScriptRoot 'OSR.Upgrade.Core.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'OSR.Recovery.WindowsServerBackup.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'OSR.Recovery.LabFiles.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'OSR.Gui.Settings.psm1') -Force
 $script:GuiScriptPath = $PSCommandPath
-$script:ApplicationTitle = 'Freshservice OSR Upgrade Manager - 0.5.0'
+$script:ApplicationTitle = 'Freshservice OSR Upgrade Manager - 0.5.1 Preview 3'
 $script:RestoringSession = $false
 $script:ElevationStarted = $false
 
@@ -31,8 +32,9 @@ $script:DryRunIndex = 0
 $script:DryRunStages = @()
 $script:DryRunTests = @()
 $script:DryRunStartedAt = $null
-$script:UpgradeRunBase = Join-Path $env:ProgramData 'FreshworksOSRUpgradeManager\Runs'
-$script:LabRunBase = Join-Path $env:SystemDrive 'OSRLab\Runs'
+$script:UpgradeRunBase = Join-Path $env:SystemDrive 'OSR\Runs'
+$script:LabRunBase = $script:UpgradeRunBase
+$script:PreferencesEnabled=-not $NoPreferences
 $script:RunBase = $script:UpgradeRunBase
 $script:WorkerPath = Join-Path $PSScriptRoot 'OSR.Upgrade.Worker.ps1'
 
@@ -75,7 +77,7 @@ $form.Controls.Add($script:workspaceHeader)
 $title=New-Label 'OSR Upgrade Manager' 20 10 650 31
 $title.Font=New-Object Drawing.Font('Segoe UI Semibold',18)
 $title.ForeColor=$script:WorkspaceAccent
-$subtitle=New-Label 'Freshservice | Version 0.5.0 | Compact workspace' 22 43 650 20
+$subtitle=New-Label 'Freshservice | Version 0.5.1 Preview 3 | Compact workspace' 22 43 650 20
 $script:lblPrivilege=New-Label 'Checking Windows token...' 720 20 300 24
 $script:lblPrivilege.TextAlign='MiddleRight'
 $script:lblPrivilege.Anchor='Top, Right'
@@ -141,6 +143,13 @@ $script:cboOperation.SelectedIndex=0
 # Internal operation binding retained for the existing worker and UAC payload.
 $script:cboOperation.Visible=$false
 $script:cboOperation.TabStop=$false
+$script:lblStrategy=New-Label 'Deployment method' 0 0 700 20
+$script:cboStrategy=New-Object Windows.Forms.ComboBox
+$script:cboStrategy.DropDownStyle='DropDownList'
+[void]$script:cboStrategy.Items.Add('In-place MSI upgrade')
+[void]$script:cboStrategy.Items.Add('Controlled replacement | inspected 2.4 -> 2.5 pair')
+$script:cboStrategy.SelectedIndex=0
+$script:workspaceCanvas.Controls.AddRange(@($script:lblStrategy,$script:cboStrategy))
 $script:workspaceCanvas.Controls.Add($script:cboOperation)
 $script:workspaceTabs=@()
 foreach($caption in @('Diagnostic','Lab repair | Experimental','Upgrade')) {
@@ -169,6 +178,8 @@ $script:txtMore=New-TextBox 0 0 700 54
 $script:txtMore.Multiline=$true; $script:txtMore.ScrollBars='Vertical'
 $script:chkApproval=New-Object Windows.Forms.CheckBox
 $script:chkRecovery=New-Object Windows.Forms.CheckBox
+$script:chkMigration=New-Object Windows.Forms.CheckBox
+$script:chkMigration.Text='I reviewed identity-only migration: no proxy/custom settings or external dependencies require transfer.'
 $script:chkApproval.Size=New-Object Drawing.Size(950,24)
 $script:chkRecovery.Size=New-Object Drawing.Size(950,24)
 $script:btnPreflight=New-Button 'Read-only preflight' 0 0 170 34
@@ -182,7 +193,7 @@ $script:progress=New-Object Windows.Forms.ProgressBar
 $script:progress.Style='Continuous'
 $script:workspaceCanvas.Controls.AddRange(@($script:lblLabComputer,$script:txtLabComputer,$script:btnAdvanced,$script:btnAutoFind,
     $lblSHA,$script:txtSHA,$lblPrevSHA,$script:txtPreviousSHA,$lblMandatory,$script:txtMandatory,$lblMore,$script:txtMore,
-    $script:chkApproval,$script:chkRecovery,$script:btnPreflight,$script:btnStart,$script:btnLogs,$script:btnBackupCheck,$script:lblStatus,$script:progress))
+    $script:chkApproval,$script:chkRecovery,$script:chkMigration,$script:btnPreflight,$script:btnStart,$script:btnLogs,$script:btnBackupCheck,$script:lblStatus,$script:progress))
 $script:logPanel=New-Object Windows.Forms.Panel
 $script:workspaceCanvas.Controls.Add($script:logPanel)
 $script:lstLog=New-Object Windows.Forms.ListBox
@@ -202,10 +213,10 @@ $script:lblLogCopy=New-Object Windows.Forms.ToolStripLabel('Activity log | Ctrl+
 $script:logPanel.Controls.Add($script:logToolbar)
 $script:lstLog.BringToFront()
 $tabIndex=3
-foreach($control in @($script:txtInstall,$script:btnInstall,$script:txtMsi,$script:btnMsi,
+foreach($control in @($script:txtInstall,$script:btnInstall,$script:cboStrategy,$script:txtMsi,$script:btnMsi,
     $script:txtLabComputer,$script:txtRecoveryRoot,$script:btnRecoveryRoot,$script:btnAdvanced,
     $script:txtPrevious,$script:btnAutoFind,$script:btnPrevious,$script:txtSHA,$script:txtPreviousSHA,
-    $script:txtMandatory,$script:txtMore,$script:chkApproval,$script:chkRecovery,
+    $script:txtMandatory,$script:txtMore,$script:chkApproval,$script:chkRecovery,$script:chkMigration,
     $script:btnPreflight,$script:btnStart,$script:btnBackupCheck,$script:btnLogs,$script:logPanel)){
     $control.TabIndex=$tabIndex; $tabIndex++
 }
@@ -229,20 +240,27 @@ function Update-WorkspaceLayout {
         for($i=0;$i -lt 3;$i++){
             $w=[int](($width-12)/3)
             $script:workspaceTabs[$i].SetBounds((20+$i*($w+6)),$y,$w,34)
-            $selected=if($i -eq 0){$script:WorkspaceDiagnostic}elseif($i -eq 1){-not $script:WorkspaceDiagnostic -and (Get-GuiOperation) -eq 'LabRepair'}else{-not $script:WorkspaceDiagnostic -and (Get-GuiOperation) -eq 'Upgrade'}
+            $selected=if($i -eq 0){$script:WorkspaceDiagnostic}elseif($i -eq 1){-not $script:WorkspaceDiagnostic -and (Get-GuiOperation) -eq 'LabRepair'}else{-not $script:WorkspaceDiagnostic -and (Get-GuiOperation) -in @('Upgrade','Replacement')}
             $script:workspaceTabs[$i].BackColor=if($selected){[Drawing.Color]::FromArgb(218,239,234)}else{[Drawing.Color]::White}
             $script:workspaceTabs[$i].ForeColor=if($selected){$script:WorkspaceAccent}else{[Drawing.Color]::FromArgb(35,55,63)}
             $script:workspaceTabs[$i].AccessibleDescription=if($selected){'Selected operation'}else{'Select operation; enables Dry Run and clears live approvals'}
         }
         $y+=48
         $lab=(Get-GuiOperation) -eq 'LabRepair'
+        $replacement=(Get-GuiOperation) -eq 'Replacement'
         $diagnostic=$script:WorkspaceDiagnostic
         $advanced=$script:WorkspaceAdvanced
-        $script:lblWorkspaceTitle.Text=if($diagnostic){'Read-only diagnostic'}elseif($lab){'Same-version lab repair'}else{'Upgrade to a newer OSR version'}
+        $script:lblWorkspaceTitle.Text=if($diagnostic){'Read-only diagnostic'}elseif($lab){'Same-version lab repair'}elseif($replacement){'Controlled replacement | identity-only migration'}else{'In-place MSI upgrade'}
         $script:lblWorkspaceTitle.SetBounds(20,$y,$width,25); $y+=28
-        $script:lblWorkspaceNote.Text=if($diagnostic){'Inspect the installation without service control, backup, MSI or recovery execution.'}elseif($lab){'Experimental file restoration. Live tests require the exact Hyper-V guest and a host-side checkpoint.'}else{'Live upgrade requires trusted media and an independently tested recovery procedure.'}
+        $script:lblWorkspaceNote.Text=if($diagnostic){'Inspect the installation without service control, backup, MSI or recovery execution.'}elseif($lab){'Experimental file restoration. Live tests require the exact Hyper-V guest and a host-side checkpoint.'}elseif($replacement){'Verified backup, explicit uninstall, fresh install and osr.conf migration. Target defaults remain; other configuration is not migrated.'}else{'Direct 2.4 -> 2.5 is blocked after the observed MSI failure. Select Controlled replacement for that inspected pair.'}
         $script:lblWorkspaceNote.SetBounds(20,$y,$width,34); $y+=38
         Set-WorkspaceField $script:lblInstall $script:txtInstall $script:btnInstall 20 $y $width; $y+=56
+        $script:lblStrategy.Visible=-not $diagnostic -and -not $lab
+        $script:cboStrategy.Visible=-not $diagnostic -and -not $lab
+        if(-not $diagnostic -and -not $lab){
+            $script:lblStrategy.SetBounds(20,$y,$width,19)
+            $script:cboStrategy.SetBounds(20,($y+21),$width,26);$y+=56
+        }
         foreach($c in @($script:lblMsi,$script:txtMsi,$script:btnMsi,$script:lblRecoveryRoot,$script:txtRecoveryRoot,$script:btnRecoveryRoot)){$c.Visible=-not $diagnostic}
         if(-not $diagnostic){
             $script:lblMsi.Text=if($lab){'Same-version MSI'}else{'New-version MSI'}
@@ -273,9 +291,11 @@ function Update-WorkspaceLayout {
         }
         $live=-not $script:chkDryRun.Checked -and -not $diagnostic
         $script:chkApproval.Visible=$live; $script:chkRecovery.Visible=$live
+        $script:chkMigration.Visible=$live -and $replacement
         if($live){
             $script:chkApproval.SetBounds(20,$y,$width,24); $y+=26
             $script:chkRecovery.SetBounds(20,$y,$width,24); $y+=30
+            if($replacement){$script:chkMigration.SetBounds(20,$y,$width,32);$y+=36}
         }
         $x=20
         $script:btnStart.Visible=-not $diagnostic
@@ -296,7 +316,7 @@ function Select-WorkspaceOperation([string]$Operation) {
     if($Operation -notin @('Diagnostic','Upgrade','LabRepair')){throw 'Unsupported workspace operation.'}
     $script:cboOperation.SelectedIndex=if($Operation -eq 'LabRepair'){1}else{0}
     $script:WorkspaceDiagnostic=$Operation -eq 'Diagnostic'
-    $script:chkApproval.Checked=$false; $script:chkRecovery.Checked=$false
+    $script:chkApproval.Checked=$false; $script:chkRecovery.Checked=$false; $script:chkMigration.Checked=$false
     $script:chkDryRun.Checked=$true
     $script:workspaceCanvas.AutoScrollPosition=New-Object Drawing.Point(0,0)
     $script:lblStatus.Text='Operation selected. Dry Run is enabled; live approvals were cleared.'
@@ -363,7 +383,10 @@ $selectAllMenu.Add_Click({ Select-AllGuiLogs })
 $script:lstLog.ContextMenuStrip=$script:logMenu
 
 function Get-GuiOperation {
-    if ($script:cboOperation.SelectedIndex -eq 0) { return 'Upgrade' }
+    if ($script:cboOperation.SelectedIndex -eq 0) {
+        if($script:cboStrategy.SelectedIndex -eq 1){return 'Replacement'}
+        return 'Upgrade'
+    }
     if ($script:cboOperation.SelectedIndex -eq 1) { return 'LabRepair' }
     throw 'Select a supported operation.'
 }
@@ -376,7 +399,7 @@ function Set-GuiBusy([bool]$Busy) {
         $script:txtMandatory,$script:txtMore,$script:chkDryRun,$script:chkApproval,$script:chkRecovery,
         $script:btnMsi,$script:btnPrevious,$script:btnInstall,$script:btnRecoveryRoot,
         $script:btnPreflight,$script:btnStart,$script:btnAutoFind,$script:btnBackupCheck,
-        $script:cboOperation,$script:txtLabComputer)) { $control.Enabled = -not $Busy }
+        $script:cboOperation,$script:txtLabComputer,$script:cboStrategy,$script:chkMigration)) { $control.Enabled = -not $Busy }
 }
 function Get-Questions {
     $q=@()
@@ -465,6 +488,7 @@ function Export-GuiResumeState {
     $state = @{
         FormatVersion = 1
         Operation = Get-GuiOperation
+        MigrationScopeApproved=[bool]$script:chkMigration.Checked
         LabExpectedComputerName = [string]$script:txtLabComputer.Text
         NewMsi = [string]$script:txtMsi.Text
         PreviousMsi = [string]$script:txtPrevious.Text
@@ -495,9 +519,10 @@ function Restore-GuiResumeState([string]$EncodedState) {
     $script:RestoringSession = $true
     try {
         $operation = [string]$state.Operation
-        if ($operation -notin @('','Upgrade','LabRepair')) { throw 'Unsupported operation in elevation state.' }
+        if ($operation -notin @('','Upgrade','LabRepair','Replacement')) { throw 'Unsupported operation in elevation state.' }
         $script:WorkspaceDiagnostic=$false
         $script:cboOperation.SelectedIndex = if ($operation -eq 'LabRepair') { 1 } else { 0 }
+        $script:cboStrategy.SelectedIndex=if($operation -eq 'Replacement'){1}else{0}
         $script:txtLabComputer.Text = [string]$state.LabExpectedComputerName
         $script:txtMsi.Text = [string]$state.NewMsi
         $script:txtPrevious.Text = [string]$state.PreviousMsi
@@ -509,6 +534,7 @@ function Restore-GuiResumeState([string]$EncodedState) {
         $script:txtMore.Text = [string]$state.AdditionalTests
         $script:chkApproval.Checked = [bool]$state.MaintenanceApproved
         $script:chkRecovery.Checked = [bool]$state.RecoveryValidated
+        $script:chkMigration.Checked=($state.PSObject.Properties['MigrationScopeApproved'] -and $state.MigrationScopeApproved -is [bool] -and $state.MigrationScopeApproved)
         $script:chkDryRun.Checked = $false
         $form.Text = $script:ApplicationTitle + ' [Administrator]'
         $script:lblStatus.Text = 'Administrator privileges confirmed. Live mode is available.'
@@ -518,6 +544,7 @@ function Restore-GuiResumeState([string]$EncodedState) {
 }
 function Request-GuiElevation {
     if (Test-OsrAdministrator) { return $true }
+    Save-GuiPreferences
     $payload = Export-GuiResumeState
     $powershellExe = Join-Path $PSHOME 'powershell.exe'
     $args = '-NoProfile -STA -ExecutionPolicy RemoteSigned -File "{0}" -ResumeState "{1}"' -f $script:GuiScriptPath,$payload
@@ -550,6 +577,7 @@ function Get-GuiRunConfiguration([object[]]$Questions) {
         RecoveryProcedureValidated=((-not $lab) -and [bool]$script:chkRecovery.Checked)
         LabCheckpointConfirmed=($lab -and [bool]$script:chkRecovery.Checked)
         LabExpectedComputerName=$script:txtLabComputer.Text.Trim()
+        MigrationScopeApproved=[bool]$script:chkMigration.Checked
     }
 }
 function New-Run([string]$Mode) {
@@ -568,11 +596,12 @@ function New-Run([string]$Mode) {
     if($Mode -eq 'Deploy') {
         if(-not $script:chkApproval.Checked){throw 'Confirm the approved maintenance window.'}
         if(-not $lab -and -not $script:chkRecovery.Checked){throw 'Confirm independently validated downgrade and restoration.'}
+        if($operation -eq 'Replacement' -and -not $script:chkMigration.Checked){throw 'Review and confirm the identity-only migration scope.'}
     }
     $script:RunBase = [IO.Path]::GetFullPath($script:txtRecoveryRoot.Text.Trim())
     $runName=('Run-{0}-{1}' -f (Get-Date -Format 'yyyyMMdd-HHmmss'),([guid]::NewGuid().ToString('N').Substring(0,8)))
     $script:CurrentRun=Join-Path $script:RunBase $runName
-    if ($lab) { Assert-OsrLabPaths -Source $script:txtInstall.Text.Trim() -Destination $script:CurrentRun }
+    Assert-OsrLabPaths -Source $script:txtInstall.Text.Trim() -Destination $script:CurrentRun
     [void](New-Item -Path $script:CurrentRun -ItemType Directory -Force)
     Protect-RunDirectory $script:CurrentRun
     $cfg=Get-GuiRunConfiguration -Questions $questions
@@ -587,12 +616,10 @@ function New-Run([string]$Mode) {
     $powershellExe=Join-Path $PSHOME 'powershell.exe'
     $arg='-NoProfile -ExecutionPolicy RemoteSigned -File "{0}" -Mode {1} -RunDirectory "{2}" -ConfigurationPath "{3}" -Operation {4}' -f `
         $script:WorkerPath,$Mode,$script:CurrentRun,$configPath,$operation
-    $pi=New-Object Diagnostics.ProcessStartInfo
-    $pi.FileName=$powershellExe
-    $pi.Arguments=$arg
-    $pi.UseShellExecute=$false
-    $pi.CreateNoWindow=$true
-    $script:ChildProcess=[Diagnostics.Process]::Start($pi)
+    try{$script:ChildProcess=Start-Process -FilePath $powershellExe -ArgumentList $arg -WindowStyle Hidden -PassThru `
+        -RedirectStandardError (Join-Path $script:CurrentRun 'worker-stderr.log') `
+        -RedirectStandardOutput (Join-Path $script:CurrentRun 'worker-stdout.log') -ErrorAction Stop
+    }catch{Set-GuiBusy $false;throw}
     $script:poll.Start()
 }
 function Send-Answer([string]$Answer,[string]$PromptId) {
@@ -603,12 +630,26 @@ function Send-Answer([string]$Answer,[string]$PromptId) {
     if(Test-Path -LiteralPath $response){Remove-Item -LiteralPath $response -Force}
     [IO.File]::Move($tmp,$response)
 }
+function Read-GuiActivityLines([string]$Path) {
+    # Explicit sharing lets the worker append while the GUI reads its journal.
+    $stream=[IO.File]::Open($Path,[IO.FileMode]::Open,[IO.FileAccess]::Read,([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
+    $reader=$null
+    try{
+        $reader=New-Object IO.StreamReader($stream,[Text.Encoding]::UTF8,$true)
+        $text=$reader.ReadToEnd()
+        if($text.Length){
+            # A writer may still be completing the last line. Read it next poll.
+            $end=$text.LastIndexOf("`n")
+            if($end -ge 0){return @($text.Substring(0,$end) -split '\r?\n')}
+        }
+    }finally{if($reader){$reader.Dispose()}else{$stream.Dispose()}}
+}
 function Refresh-Run {
     if(-not $script:CurrentRun){return}
     $log=Join-Path $script:CurrentRun 'activity.log'
     if(Test-Path -LiteralPath $log){
         try{
-            $lines=@(Get-Content -LiteralPath $log -ErrorAction Stop)
+            $lines=@(Read-GuiActivityLines $log)
             if($lines.Count -gt $script:LastLogLineCount){
                 for($i=$script:LastLogLineCount;$i -lt $lines.Count;$i++){
                     [void]$script:lstLog.Items.Add($lines[$i])
@@ -648,13 +689,15 @@ function Refresh-Run {
                 $r=Get-Content -LiteralPath $report -Raw | ConvertFrom-Json
                 $script:lblStatus.Text="Finished: $($r.Status). Review local execution report."
             }catch{$script:lblStatus.Text='Worker ended. Review local logs.'}
-        }else{$script:lblStatus.Text='Worker ended without report. Review local logs.'}
+        }else{
+            $script:lblStatus.Text=('Worker exited ({0}) without report. Check Freshworks services and worker-stderr.log / worker-failure.log. Do not retry deployment.' -f $script:ChildProcess.ExitCode)
+        }
     }
 }
 function Refresh-RunLog {
     $log=Join-Path $script:CurrentRun 'activity.log'
     if(-not (Test-Path -LiteralPath $log)){return}
-    $lines=@(Get-Content -LiteralPath $log -ErrorAction SilentlyContinue)
+    try{$lines=@(Read-GuiActivityLines $log)}catch{return}
     if($lines.Count -gt $script:LastLogLineCount){
         for($i=$script:LastLogLineCount;$i -lt $lines.Count;$i++){[void]$script:lstLog.Items.Add($lines[$i])}
         $script:LastLogLineCount=$lines.Count
@@ -805,6 +848,11 @@ function Start-DryRun([bool]$PreflightOnly) {
             $script:DryRunStages[3].Message = 'Would capture installation files, directory permissions and original MSI, then verify hashes (SIMULATED).'
             $script:DryRunStages[4].Message = 'Would repair the same OSR version using /fomus with no automatic reboot (SIMULATED).'
         }
+        if ((Get-GuiOperation) -eq 'Replacement') {
+            $script:DryRunStages[0].Message='Would verify the inspected 2.4 -> 2.5 profile and explicit identity-only migration approval (SIMULATED).'
+            $script:DryRunStages[3].Message='Would verify the complete file tree, permissions and both installer copies before uninstalling (SIMULATED).'
+            $script:DryRunStages[4].Message='Would uninstall 2.4, install 2.5 and migrate only osr.conf; new binaries and application.conf defaults remain (SIMULATED).'
+        }
         $script:DryRunIndex=0
         $script:dryTimer.Start()
     } catch {
@@ -826,9 +874,10 @@ function Update-GuiMode {
         $form.Text = $script:ApplicationTitle
     }
     $dry=[bool]$script:chkDryRun.Checked
+    $replacement=(Get-GuiOperation) -eq 'Replacement'
     $script:chkDryRun.Enabled=(-not $script:WorkspaceDiagnostic) -and (-not $script:WorkspaceBusy)
     $lab = (Get-GuiOperation) -eq 'LabRepair'
-    $script:btnStart.Text=if($dry){'Start dry run'}elseif($lab){'START LAB REPAIR'}else{'START REAL UPGRADE'}
+    $script:btnStart.Text=if($dry){'Start dry run'}elseif($lab){'START LAB REPAIR'}elseif($replacement){'START REPLACEMENT'}else{'START REAL UPGRADE'}
     $script:lblLabComputer.Visible=$lab
     $script:txtLabComputer.Visible=$lab
     $script:chkApproval.Text=if($lab){'I authorize this same-version repair test on the dedicated lab guest.'}else{'I confirm the approved maintenance window and authorized production change.'}
@@ -849,6 +898,8 @@ function Update-GuiMode {
     $script:btnLogs.Enabled=(-not $dry) -and (-not $script:DryRunActive)
     $script:chkApproval.Enabled=(-not $dry) -and (-not $script:DryRunActive)
     $script:chkRecovery.Enabled=(-not $dry) -and (-not $script:DryRunActive)
+    $script:chkMigration.Enabled=(-not $dry) -and (-not $script:WorkspaceBusy)
+    $script:modePanel.BackColor=if($dry){[Drawing.Color]::FromArgb(231,244,240)}else{[Drawing.Color]::FromArgb(255,237,225)}
     Update-WorkspaceLayout
 }
 $script:dryTimer=New-Object Windows.Forms.Timer
@@ -908,6 +959,7 @@ $script:cboOperation.Add_SelectedIndexChanged({
     $script:WorkspaceDiagnostic=$false
     $script:chkApproval.Checked=$false
     $script:chkRecovery.Checked=$false
+    $script:chkMigration.Checked=$false
     $script:chkDryRun.Checked=$true
     if ($script:txtRecoveryRoot.Text -in @($script:UpgradeRunBase,$script:LabRunBase)) {
         $script:txtRecoveryRoot.Text=if((Get-GuiOperation) -eq 'LabRepair'){$script:LabRunBase}else{$script:UpgradeRunBase}
@@ -918,6 +970,13 @@ $script:cboOperation.Add_SelectedIndexChanged({
         $script:txtMandatory.Text=if((Get-GuiOperation) -eq 'LabRepair'){$labQuestion}else{$upgradeQuestion}
     }
     $script:lblStatus.Text='Operation changed. Dry Run is enabled; live approvals were cleared.'
+    Update-GuiMode
+})
+$script:cboStrategy.Add_SelectedIndexChanged({
+    if($script:RestoringSession){return}
+    $script:chkApproval.Checked=$false;$script:chkRecovery.Checked=$false;$script:chkMigration.Checked=$false
+    $script:chkDryRun.Checked=$true
+    $script:lblStatus.Text='Deployment method changed. Dry Run enabled; live approvals cleared.'
     Update-GuiMode
 })
 $script:chkDryRun.Add_CheckedChanged({
@@ -966,6 +1025,9 @@ $script:btnStart.Add_Click({
     if ((Get-GuiOperation) -eq 'LabRepair') {
         $warning='LIVE LAB REPAIR: stop both Freshworks services, capture the installation tree, and repair the same MSI version. A named Hyper-V guest and an existing baseline checkpoint are required. If you reject the result, the GUI can offer experimental file restoration. Registry and external dependencies are outside this test. Continue with the authorized lab test?'
     }
+    if((Get-GuiOperation) -eq 'Replacement'){
+        $warning='CONTROLLED REPLACEMENT: verified backup, uninstall the current product, install the inspected 2.5 MSI and copy only osr.conf identity. Target application.conf and binaries remain. Proxy/custom configuration and external dependencies are excluded. An independently tested recovery procedure and migration-scope approval are required. Continue?'
+    }
     if([Windows.Forms.MessageBox]::Show($form,$warning,'LIVE operation confirmation',
         [Windows.Forms.MessageBoxButtons]::YesNo,[Windows.Forms.MessageBoxIcon]::Warning) -ne [Windows.Forms.DialogResult]::Yes){return}
     try{New-Run 'Deploy'}catch{[void][Windows.Forms.MessageBox]::Show($form,$_.Exception.Message,'Deployment blocked')}
@@ -988,8 +1050,28 @@ $form.Add_FormClosing({
             'An operation is running. Keep this session open until it completes.',
             'Operation in progress',[Windows.Forms.MessageBoxButtons]::OK,[Windows.Forms.MessageBoxIcon]::Warning)
         $_.Cancel=$true
+        return
     }
+    Save-GuiPreferences
 })
+function Save-GuiPreferences {
+    if(-not $script:PreferencesEnabled){return}
+    try{
+        Save-OsrGuiSettings -Settings @{
+            MsiPath=$script:txtMsi.Text;PreviousMsiPath=$script:txtPrevious.Text;
+            InstallDirectory=$script:txtInstall.Text;BackupRoot=$script:txtRecoveryRoot.Text;
+            LabExpectedComputerName=$script:txtLabComputer.Text
+        }
+    }catch{$script:lblStatus.Text='Preferences could not be saved. No operation approval was persisted.'}
+}
+if($script:PreferencesEnabled){
+    try{
+        $preferences=Read-OsrGuiSettings
+        foreach($mapping in @(@('MsiPath',$script:txtMsi),@('PreviousMsiPath',$script:txtPrevious),@('InstallDirectory',$script:txtInstall),@('BackupRoot',$script:txtRecoveryRoot),@('LabExpectedComputerName',$script:txtLabComputer))){
+            if($preferences.ContainsKey($mapping[0])){$mapping[1].Text=$preferences[$mapping[0]]}
+        }
+    }catch{$script:lblStatus.Text='Saved preferences could not be read; safe defaults remain active.'}
+}
 if (-not [string]::IsNullOrWhiteSpace($ResumeState)) {
     try {
         Restore-GuiResumeState $ResumeState
