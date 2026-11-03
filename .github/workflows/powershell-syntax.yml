@@ -78,3 +78,6 @@ jobs:
       - name: Regression tests - portable executable
         shell: powershell
         run: .\tests\Test-PortableExecutable.ps1
+      - name: Regression tests - encrypted GUI preferences
+        shell: powershell
+        run: .\tests\Test-GuiSettings.ps1

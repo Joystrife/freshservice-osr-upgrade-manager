@@ -14,8 +14,23 @@ try {
         function Import-Module { param($Name,[switch]$Force) }
         function Test-OsrAdministrator { $true }
         function Get-OsrInstallDirectory { 'C:\SyntheticOSR' }
-        . $tempFile
+        . $tempFile -NoPreferences
         try {
+            $sharedLog=$tempFile+'.log'
+            try{
+                [IO.File]::WriteAllText($sharedLog,"complete Ω`npartial",[Text.Encoding]::UTF8)
+                $writer=[IO.File]::Open($sharedLog,[IO.FileMode]::Open,[IO.FileAccess]::Write,[IO.FileShare]::ReadWrite)
+                try{
+                    $lines=@(Read-GuiActivityLines $sharedLog)
+                    if($lines.Count -ne 1 -or $lines[0] -ne 'complete Ω'){throw 'Shared journal read corrupted Unicode or exposed an unfinished line.'}
+                    [void]$writer.Seek(0,[IO.SeekOrigin]::End)
+                    $bytes=[Text.Encoding]::UTF8.GetBytes(" completed`n")
+                    $writer.Write($bytes,0,$bytes.Length);$writer.Flush()
+                    $lines=@(Read-GuiActivityLines $sharedLog)
+                    if($lines.Count -ne 2 -or $lines[1] -ne 'partial completed'){throw 'Next journal poll lost a completed line.'}
+                }finally{$writer.Dispose()}
+            }finally{if(Test-Path -LiteralPath $sharedLog){[IO.File]::Delete($sharedLog)}}
+            Write-Host 'PASS: shared log reads coexist with an open writer and defer incomplete lines'
             if(-not $script:WorkspaceDiagnostic -or -not $script:chkDryRun.Checked -or $script:chkDryRun.Enabled -or
                 $script:btnStart.Visible -or $script:txtMsi.Visible){throw 'Diagnostic workspace did not default to read-only.'}
             $script:chkDryRun.Checked=$false
@@ -131,6 +146,22 @@ try {
             if(-not $script:WorkspaceDiagnostic -or -not $script:chkDryRun.Checked -or $script:chkApproval.Checked -or
                 $script:chkRecovery.Checked){throw 'Returning from lab to Diagnostic retained live state.'}
             Write-Host 'PASS: compact Workspace diagnostic lock, busy tabs, advanced value retention and approval resets'
+            Select-WorkspaceOperation 'Upgrade'
+            $script:chkApproval.Checked=$true
+            $script:chkRecovery.Checked=$true
+            $script:cboStrategy.SelectedIndex=1
+            if((Get-GuiOperation) -ne 'Replacement' -or -not $script:chkDryRun.Checked -or $script:chkApproval.Checked -or $script:chkRecovery.Checked -or $script:chkMigration.Checked){throw 'Strategy selection did not reset live authorization.'}
+            $script:chkMigration.Checked=$true
+            $replacementResume=Export-GuiResumeState
+            $script:cboStrategy.SelectedIndex=0
+            Restore-GuiResumeState $replacementResume
+            Update-GuiMode
+            if((Get-GuiOperation) -ne 'Replacement' -or -not $script:chkMigration.Checked -or $script:btnStart.Text -notmatch 'REPLACEMENT'){throw 'Replacement elevation state was not preserved.'}
+            $replacementConfig=Get-GuiRunConfiguration -Questions @('synthetic replacement acceptance')
+            if(-not $replacementConfig.MigrationScopeApproved){throw 'Replacement migration scope was not exported.'}
+            Select-WorkspaceOperation 'Diagnostic'
+            if(-not $script:chkDryRun.Checked -or $script:chkMigration.Checked){throw 'Diagnostic retained replacement authorization.'}
+            Write-Host 'PASS: replacement strategy reset, explicit migration approval and elevation handoff'
             if($env:OSR_GUI_PREVIEW_PATH){
                 $script:lblLogCopy.Text='Activity log | Ctrl+C: copy selected | Ctrl+A: select all'
                 $form.Size=New-Object Drawing.Size(1060,850)
@@ -138,8 +169,9 @@ try {
                 [Windows.Forms.Application]::DoEvents()
                 Update-WorkspaceLayout
                 try {
-                    foreach($previewMode in @('Diagnostic','LabRepair','Upgrade')){
-                        Select-WorkspaceOperation $previewMode
+                    foreach($previewMode in @('Diagnostic','LabRepair','Upgrade','Replacement')){
+                        Select-WorkspaceOperation $(if($previewMode -eq 'Replacement'){'Upgrade'}else{$previewMode})
+                        if($previewMode -eq 'Replacement'){$script:cboStrategy.SelectedIndex=1}
                         if($previewMode -eq 'LabRepair'){
                             $script:WorkspaceAdvanced=$true
                             $form.Size=$form.MinimumSize
@@ -159,6 +191,17 @@ try {
             }
             Write-Host 'PASS: actual GUI controls preserve Dry Run, operation reset, elevation payload and lab-specific labels'
         } finally { $form.Dispose() }
+        function Read-OsrGuiSettings { @{MsiPath='C:\Synthetic\remembered.msi';PreviousMsiPath='C:\Synthetic\old.msi';InstallDirectory='C:\SyntheticOSR';BackupRoot='C:\Remembered\Runs';LabExpectedComputerName='remembered-guest';DryRun=$false;Operation='Replacement';MaintenanceApproved=$true} }
+        function Save-OsrGuiSettings {param($Settings) $script:SavedTestPreferences=$Settings}
+        . $tempFile
+        try{
+            if($script:txtMsi.Text -ne 'C:\Synthetic\remembered.msi' -or $script:txtRecoveryRoot.Text -ne 'C:\Remembered\Runs' -or
+                -not $script:WorkspaceDiagnostic -or -not $script:chkDryRun.Checked -or $script:chkApproval.Checked -or
+                $script:chkRecovery.Checked -or $script:chkMigration.Checked -or $script:cboStrategy.SelectedIndex -ne 0){throw 'Preference startup restored unsafe operation state or lost ordinary inputs.'}
+            Save-GuiPreferences
+            if($script:SavedTestPreferences.Count -ne 5 -or $script:SavedTestPreferences.MsiPath -ne 'C:\Synthetic\remembered.msi'){throw 'GUI preference save did not use the safe mapping.'}
+            Write-Host 'PASS: remembered inputs reopen in Diagnostic/Dry Run with all live authorization cleared'
+        }finally{$form.Dispose()}
     }
 } finally {
     if (Test-Path -LiteralPath $tempFile) { Remove-Item -LiteralPath $tempFile -Force }

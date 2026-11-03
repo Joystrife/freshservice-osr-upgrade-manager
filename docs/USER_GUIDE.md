@@ -1,5 +1,7 @@
 # 0.5.0 User Guide
 
+For the unreleased 0.5.1 preview, first read [Controlled replacement and VM qualification](RELEASE_0_5_1.md). Upgrade now includes a separate inspected 2.4 -> 2.5 replacement strategy with explicit identity-only migration approval. The default recovery root is `%SystemDrive%\OSR\Runs`. Paths and guest name are remembered per Windows user; mode and authorization are reset on normal startup. Earlier instructions below describe the published 0.5.0 behavior unless superseded by the preview notes.
+
 Version 0.5.0 is an experimental source and portable executable release of Freshservice OSR Upgrade Manager. Start with Dry Run. A completed simulation is not proof that a real operation is ready or recoverable.
 
 ![Application workflow](images/workflow.svg)

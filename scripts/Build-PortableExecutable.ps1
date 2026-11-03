@@ -6,7 +6,7 @@ Set-StrictMode -Version Latest
 $root=Split-Path $PSScriptRoot -Parent
 if (-not $OutputDirectory) { $OutputDirectory=Join-Path $root 'dist\portable' }
 $output=[IO.Path]::GetFullPath($OutputDirectory).TrimEnd('\')
-$exe=Join-Path $output 'OSR-Upgrade-Manager-0.5.0-portable.exe'
+$exe=Join-Path $output 'OSR-Upgrade-Manager-0.5.1-preview.3-portable.exe'
 $checksum=Join-Path $output 'SHA256SUMS.txt'
 if ((Test-Path -LiteralPath $exe) -or (Test-Path -LiteralPath $checksum)) { throw 'Output already exists; choose a fresh output directory.' }
 $compiler=Join-Path $env:SystemRoot 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
@@ -16,7 +16,7 @@ $stage=Join-Path $output ('.portable-build-'+[guid]::NewGuid().ToString('N'))
 try {
     $payload=Join-Path $stage 'payload'
     [void](New-Item -Path (Join-Path $payload 'src') -ItemType Directory -Force)
-    $runtimeFiles=@('Freshservice_OSR_Upgrade_GUI.ps1','OSR.Upgrade.Core.psm1','OSR.Upgrade.Worker.ps1','OSR.Recovery.LabFiles.psm1','OSR.Recovery.WindowsServerBackup.psm1')
+    $runtimeFiles=@('Freshservice_OSR_Upgrade_GUI.ps1','OSR.Gui.Settings.psm1','OSR.Upgrade.Core.psm1','OSR.Upgrade.Worker.ps1','OSR.Recovery.LabFiles.psm1','OSR.Recovery.WindowsServerBackup.psm1')
     foreach ($name in $runtimeFiles) {
         $source=Join-Path $root ('src\'+$name)
         if ((Get-Item -LiteralPath $source).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Runtime files cannot be reparse points.' }

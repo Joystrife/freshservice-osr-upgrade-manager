@@ -50,14 +50,57 @@ function ConvertFrom-OsrUninstallEntries {
 }
 
 function Get-OsrProduct {
+    param([switch]$AllowAbsent)
     $keys = @(
         'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
         'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
     )
     # No registry writes. Other installed programs may not have a DisplayName,
     # DisplayVersion, InstallSource or InstallLocation: skip them safely.
-    $entries = @(Get-ItemProperty -Path $keys -ErrorAction SilentlyContinue)
+    if ($AllowAbsent) {
+        # Only a successful enumeration with no named product means absent.
+        # Access errors, malformed records and ambiguous registrations stay fatal.
+        $entries=@(foreach($key in $keys){
+            $parent=$key.Substring(0,$key.Length-2)
+            if(Test-Path -LiteralPath $parent -ErrorAction Stop){
+                foreach($child in @(Get-ChildItem -LiteralPath $parent -ErrorAction Stop)){
+                    Get-ItemProperty -LiteralPath $child.PSPath -ErrorAction Stop
+                }
+            }
+        })
+        $named=@($entries | Where-Object { (Get-OsrRegistryValue $_ 'DisplayName') -eq 'Orchestration Server' })
+        if($named.Count -eq 0){return $null}
+        $entries=$named
+    }else{$entries = @(Get-ItemProperty -Path $keys -ErrorAction SilentlyContinue)}
     return ConvertFrom-OsrUninstallEntries -Entries $entries
+}
+
+function Stop-OsrPresentServices {
+    # Recovery may start with zero or only one of the Freshworks services.
+    foreach($display in @('Orchestration Server - WinRM_SSH','Orchestration Server')){
+        $records=@(Get-CimInstance Win32_Service -ErrorAction Stop | Where-Object DisplayName -eq $display)
+        if($records.Count -gt 1){throw 'Ambiguous Freshworks service registration.'}
+        if($records.Count -eq 1){
+            $service=Get-Service -Name $records[0].Name -ErrorAction Stop
+            if($service.Status -ne 'Stopped'){
+                Stop-Service -InputObject $service -ErrorAction Stop
+                $service.WaitForStatus([ServiceProcess.ServiceControllerStatus]::Stopped,[TimeSpan]::FromSeconds(90))
+            }
+        }
+    }
+}
+
+function Assert-OsrReplacementProfile {
+    param([Parameter(Mandatory)]$Installed,[Parameter(Mandatory)]$Original,[Parameter(Mandatory)]$Target)
+    if($Installed.Version -ne [version]'2.4.0.0' -or $Original.Version -ne [version]'2.4.0.0' -or
+        $Target.Version -ne [version]'2.5.0.0' -or
+        $Installed.ProductCode -ine '{4F0CD0FD-1BD8-4F80-BF46-32598C37E699}' -or
+        $Original.ProductCode -ine $Installed.ProductCode -or
+        $Target.ProductCode -ine '{EB87D0DF-454F-4C0F-B002-198BF8393E4F}' -or
+        $Original.Sha256 -ine 'DC6766246F34B5DCD71C87A8B9C06B6C2A238D2A2ADDBEF6F7E1F751FC436368' -or
+        $Target.Sha256 -ine '3ECCF04031A952A77F9787B311CD57C644108D90F91168F0FBA4A34554169DE5'){
+        throw 'Controlled replacement supports only the inspected 2.4.0.0 -> 2.5.0.0 media pair. No generic migration profile is assumed.'
+    }
 }
 
 function Get-OsrServiceRecords {
@@ -339,4 +382,4 @@ function Get-OsrRecoveryEnvironment {
     }
 }
 
-Export-ModuleMember -Function Test-OsrAdministrator,Get-OsrProduct,Get-OsrServiceRecords,Get-OsrInstallDirectory,Get-OsrMsiMetadata,Assert-OsrPackageAuthenticity,Assert-OsrSafePath,Invoke-OsrRobocopy,Stop-OsrServices,Start-OsrServices,Invoke-OsrMsi,Find-OsrPreviousMsi,Get-OsrRecoveryEnvironment,Assert-OsrSameVersionRepair
+Export-ModuleMember -Function Test-OsrAdministrator,Get-OsrProduct,Get-OsrServiceRecords,Get-OsrInstallDirectory,Get-OsrMsiMetadata,Assert-OsrPackageAuthenticity,Assert-OsrSafePath,Invoke-OsrRobocopy,Stop-OsrServices,Stop-OsrPresentServices,Start-OsrServices,Invoke-OsrMsi,Find-OsrPreviousMsi,Get-OsrRecoveryEnvironment,Assert-OsrSameVersionRepair,Assert-OsrReplacementProfile

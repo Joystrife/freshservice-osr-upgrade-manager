@@ -1,5 +1,9 @@
 # 0.5.0 Known Issues and Validation Limits
 
+## 0.5.1 development preview
+
+The integrated Preview 3 replacement/recovery strategy completed one trial in the dedicated VM; broader qualification remains outstanding. It supports only the inspected signed 2.4 -> 2.5 MSI pair. Identity-only migration excludes proxy/custom application settings, registry and external dependencies. Native in-place 2.4 -> 2.5 is blocked after its independent lab failure. Recovery refuses unknown registration or residual unregistered folders; reboot-required MSI results stop for manual review. Reports must not be interpreted as workflow or full-system validation. See [preview scope](RELEASE_0_5_1.md).
+
 This list applies to `v0.5.0`. A successful lab trial is evidence for that scenario, not a general production-readiness claim.
 
 | Area | Current boundary |

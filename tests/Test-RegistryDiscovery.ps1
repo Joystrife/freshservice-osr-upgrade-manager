@@ -69,4 +69,20 @@ try {
 if (-not $detectedExpectedError) { throw 'Multiple OSR records must be rejected.' }
 Write-Host 'PASS: ambiguous OSR registration is rejected'
 
+& $module {
+    function Test-Path { param($LiteralPath,$ErrorAction) $true }
+    function Get-ChildItem { param($LiteralPath,$ErrorAction) [pscustomobject]@{PSPath='synthetic-registry-key'} }
+    function Get-ItemProperty { param($LiteralPath,$ErrorAction) [pscustomobject]@{DisplayName='Unrelated application'} }
+    if($null -ne (Get-OsrProduct -AllowAbsent)){throw 'Absent OSR was not reported as absent.'}
+    function Get-ItemProperty { param($LiteralPath,$ErrorAction) throw 'synthetic registry access denied' }
+    $failed=$false
+    try{Get-OsrProduct -AllowAbsent | Out-Null}catch{if($_.Exception.Message -match 'access denied'){$failed=$true}else{throw}}
+    if(-not $failed){throw 'Registry access error was hidden as product absence.'}
+    function Get-ItemProperty { param($LiteralPath,$ErrorAction) [pscustomobject]@{DisplayName='Orchestration Server'} }
+    $failed=$false
+    try{Get-OsrProduct -AllowAbsent | Out-Null}catch{$failed=$true}
+    if(-not $failed){throw 'Malformed named product was hidden as product absence.'}
+}
+Write-Host 'PASS: recovery absence requires successful registry enumeration; access/malformed errors remain fatal'
+
 Write-Host 'PASS: all OSR registry detection regression tests'

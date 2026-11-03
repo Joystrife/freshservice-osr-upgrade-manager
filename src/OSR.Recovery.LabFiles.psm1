@@ -74,13 +74,14 @@ function Assert-OsrLabPathBudget {
 }
 
 function Get-OsrLabTreeInventory {
-    param([Parameter(Mandatory)][string]$Root)
+    param([Parameter(Mandatory)][string]$Root,[scriptblock]$Progress)
     $full = [IO.Path]::GetFullPath($Root).TrimEnd('\')
     if (-not (Test-Path -LiteralPath $full -PathType Container)) { throw 'Lab tree is missing.' }
     if ((Get-Item -LiteralPath $full -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Lab tree cannot be a reparse point.' }
     $entries = New-Object 'System.Collections.Generic.List[object]'
     $pending = New-Object 'System.Collections.Generic.Stack[string]'
     $pending.Push($full)
+    if($Progress){& $Progress 'Hashing files' 0 0}
     while ($pending.Count) {
         foreach ($item in @(Get-ChildItem -LiteralPath $pending.Pop() -Force -ErrorAction Stop)) {
             if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Lab trees cannot contain reparse points.' }
@@ -94,9 +95,11 @@ function Get-OsrLabTreeInventory {
                 $entry.SHA256=(Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash
             }
             $entries.Add($entry)
+            if($Progress -and $entries.Count % 50 -eq 0){& $Progress 'Hashing files' $entries.Count 0}
         }
     }
     if (@($entries | Where-Object { -not $_.Directory }).Count -eq 0) { throw 'An empty lab tree is not a recovery point.' }
+    if($Progress){& $Progress 'File inventory complete' $entries.Count $entries.Count}
     return [pscustomobject]@{SchemaVersion=1;RootSDDL=(Get-Acl -LiteralPath $full).Sddl;Entries=@($entries.ToArray())}
 }
 
@@ -148,7 +151,7 @@ function Assert-OsrLabTreeEqual {
 }
 
 function Copy-OsrLabTree {
-    param([Parameter(Mandatory)][string]$Source,[Parameter(Mandatory)][string]$Destination,[Parameter(Mandatory)]$Inventory)
+    param([Parameter(Mandatory)][string]$Source,[Parameter(Mandatory)][string]$Destination,[Parameter(Mandatory)]$Inventory,[scriptblock]$Progress)
     Assert-OsrLabPaths -Source $Source -Destination $Destination
     [void](Assert-OsrLabPathBudget -Source $Source -Destination $Destination)
     # Validate every path before the first write.
@@ -160,29 +163,36 @@ function Copy-OsrLabTree {
     foreach ($entry in @($Inventory.Entries | Where-Object Directory | Sort-Object { $_.Path.Length })) {
         [void](New-Item -Path (Resolve-OsrLabChildPath $Destination $entry.Path) -ItemType Directory -Force -ErrorAction Stop)
     }
-    foreach ($entry in @($Inventory.Entries | Where-Object { -not $_.Directory })) {
+    $fileEntries=@($Inventory.Entries | Where-Object { -not $_.Directory })
+    $copied=0
+    if($Progress){& $Progress 'Copying files' 0 $fileEntries.Count}
+    foreach ($entry in $fileEntries) {
         Copy-Item -LiteralPath (Resolve-OsrLabChildPath $Source $entry.Path) -Destination (Resolve-OsrLabChildPath $Destination $entry.Path) -ErrorAction Stop
+        $copied++
+        if($Progress -and ($copied % 50 -eq 0 -or $copied -eq $fileEntries.Count)){& $Progress 'Copying files' $copied $fileEntries.Count}
     }
 }
 
 function New-OsrLabFileSnapshot {
-    param([string]$Source,[string]$Destination)
+    param([string]$Source,[string]$Destination,[scriptblock]$Progress)
     Assert-OsrLabPaths -Source $Source -Destination $Destination
     if (Test-Path -LiteralPath $Destination) { throw 'Lab snapshot destination already exists.' }
     [void](Assert-OsrLabPathBudget -Source $Source -Destination $Destination)
-    $inventory = Get-OsrLabTreeInventory -Root $Source
-    Copy-OsrLabTree -Source $Source -Destination $Destination -Inventory $inventory
-    Assert-OsrLabTreeEqual -Expected $inventory -Actual (Get-OsrLabTreeInventory $Source) -Security
-    Assert-OsrLabTreeEqual -Expected $inventory -Actual (Get-OsrLabTreeInventory $Destination)
+    $inventory = Get-OsrLabTreeInventory -Root $Source -Progress $Progress
+    Copy-OsrLabTree -Source $Source -Destination $Destination -Inventory $inventory -Progress $Progress
+    if($Progress){& $Progress 'Verifying offline source' 0 0}
+    Assert-OsrLabTreeEqual -Expected $inventory -Actual (Get-OsrLabTreeInventory $Source -Progress $Progress) -Security
+    if($Progress){& $Progress 'Verifying backup' 0 0}
+    Assert-OsrLabTreeEqual -Expected $inventory -Actual (Get-OsrLabTreeInventory $Destination -Progress $Progress)
     return $inventory
 }
 
 function Restore-OsrLabFileSnapshot {
-    param([string]$Source,[string]$Destination,[Parameter(Mandatory)]$Inventory)
+    param([string]$Source,[string]$Destination,[Parameter(Mandatory)]$Inventory,[scriptblock]$Progress)
     Assert-OsrLabPaths -Source $Source -Destination $Destination
     [void](Assert-OsrLabPathBudget -Source $Source -Destination $Destination)
     # Rehash the backup and validate manifest paths before deleting or overwriting anything.
-    Assert-OsrLabTreeEqual -Expected $Inventory -Actual (Get-OsrLabTreeInventory $Source)
+    Assert-OsrLabTreeEqual -Expected $Inventory -Actual (Get-OsrLabTreeInventory $Source -Progress $Progress)
     foreach ($entry in @($Inventory.Entries)) { [void](Resolve-OsrLabChildPath $Destination $entry.Path) }
     $current = Get-OsrLabTreeInventory $Destination
     $expected = @{}
@@ -194,18 +204,21 @@ function Restore-OsrLabFileSnapshot {
             Remove-Item -LiteralPath $targetPath -Force -ErrorAction Stop
         }
     }
-    Copy-OsrLabTree -Source $Source -Destination $Destination -Inventory $Inventory
+    Copy-OsrLabTree -Source $Source -Destination $Destination -Inventory $Inventory -Progress $Progress
     # Restore parent security before descendants: parent ACL writes can propagate
     # inherited ACEs and must never overwrite an already restored child ACL.
     $rootSecurity = New-Object Security.AccessControl.DirectorySecurity
     $rootSecurity.SetSecurityDescriptorSddlForm([string]$Inventory.RootSDDL)
     Set-Acl -LiteralPath $Destination -AclObject $rootSecurity -ErrorAction Stop
+    $secured=0
     foreach ($entry in @($Inventory.Entries | Sort-Object { $_.Path.Length })) {
         $security = if ($entry.Directory) { New-Object Security.AccessControl.DirectorySecurity } else { New-Object Security.AccessControl.FileSecurity }
         $security.SetSecurityDescriptorSddlForm([string]$entry.SDDL)
         Set-Acl -LiteralPath (Resolve-OsrLabChildPath $Destination $entry.Path) -AclObject $security -ErrorAction Stop
+        $secured++
+        if($Progress -and ($secured % 50 -eq 0 -or $secured -eq @($Inventory.Entries).Count)){& $Progress 'Restoring permissions' $secured @($Inventory.Entries).Count}
     }
-    Assert-OsrLabTreeEqual -Expected $Inventory -Actual (Get-OsrLabTreeInventory $Destination) -Security
+    Assert-OsrLabTreeEqual -Expected $Inventory -Actual (Get-OsrLabTreeInventory $Destination -Progress $Progress) -Security
 }
 
 Export-ModuleMember -Function Assert-OsrLabEnvironment,Assert-OsrLabPaths,Assert-OsrLabPathBudget,Protect-OsrLabDirectory,Get-OsrLabTreeInventory,Resolve-OsrLabChildPath,Assert-OsrLabTreeEqual,New-OsrLabFileSnapshot,Restore-OsrLabFileSnapshot

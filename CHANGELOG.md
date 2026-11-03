@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.5.1-preview.3 - Controlled replacement (2026-11-03, experimental prerelease)
+
+- Recorded one integrated Preview 3 replacement/recovery trial: 11,859-entry inventory verification, identity migration, original installation restoration and operator acceptance. The dedicated lab entry returned ONLINE; no AD/business workflow was exercised.
+
+- Preview 3: fix activity-log reader sharing and retry transient writer contention; defer incomplete GUI log lines. Preview 2 VM evidence recorded an activity-log sharing violation, pre-deployment failure and service restart, without MSI execution.
+
+- Preview 2: capture worker standard error/output and emergency exception diagnostics; show abnormal exit codes. Restart pre-deployment services before attempting diagnostic writes, including a finally cleanup path. Use atomic JSON replacement with bounded transient-I/O retries and inject diagnostic-writer failures in regression tests. The initial VM hashing interruption remains undiagnosed.
+
+- Added an explicit, media-pinned 2.4 -> 2.5 replacement strategy with identity-only migration approval; blocked the known failing in-place path.
+- Verify offline file/security inventory and both installer copies before uninstall; restore the original MSI and full captured tree after operator-approved recovery, including absent/partial product states.
+- Fail closed on unknown registration, corrupt recovery data, residual folders and reboot-required MSI results; prevent concurrent workers.
+- Use a short default recovery root, enforce path/space checks and report long-operation progress.
+- Persist only ordinary paths and guest name using per-user DPAPI encryption. Every normal startup retains Diagnostic, Dry Run and cleared live approvals.
+- Extend synthetic worker, GUI, preferences and portable-package checks; see `docs/RELEASE_0_5_1.md` for the bounded VM evidence and remaining qualification work.
+
 ## 0.5.0 - Compact Workspace and portable executable (2026-11-02)
 
 - Replaced an empty-path binding error in Lab repair recovery discovery with guidance to select the Same-version MSI first. A recovery-only selection is not promoted to repair readiness; Dry Run remains available.

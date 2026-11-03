@@ -1,5 +1,9 @@
 # Recovery Architecture
 
+## Current 0.5.1 preview scope
+
+The implemented replacement strategy uses verified application files, security metadata and original MSI media. It does not create system restore points, Hyper-V checkpoints or Windows backups. Recovery reinstalls the original registered product before restoring its saved tree; only known or absent registrations are accepted. Unknown registrations and unregistered residual folders require manual review. See [0.5.1 scope](RELEASE_0_5_1.md) for migration limits, report semantics and qualification requirements. The broader provider contract below remains an architectural roadmap, not a statement of implemented full-machine recovery.
+
 ## Purpose
 
 Freshservice OSR Upgrade Manager is moving from a single MSI-based recovery sequence to an extensible **Recovery Provider Manager**. Its job is to assess recoverability before authorizing a disruptive Orchestration Server upgrade.
