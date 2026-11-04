@@ -26,7 +26,7 @@ See the [user guide](https://github.com/Joystrife/freshservice-osr-upgrade-manag
 
 ## Local files and integrity
 
-The launcher checks the embedded ZIP's SHA-256 and exact nine-file allowlist before extraction. It writes a fresh application folder below `%LOCALAPPDATA%\FreshworksOSRUpgradeManager\Portable\<random-id>`, with permissions restricted to the current account, SYSTEM and Administrators. It refuses reparse-point ancestors, duplicate/unexpected ZIP entries and overlong extraction paths. It starts the Windows-provided PowerShell executable with `-NoProfile -STA -ExecutionPolicy RemoteSigned`; enforced organizational policies retain precedence.
+The launcher checks the embedded ZIP's SHA-256 and exact nine-file allowlist before extraction. It writes a fresh application folder below `%LOCALAPPDATA%\FreshworksOSRUpgradeManager\Portable\<random-id>`, with permissions restricted to the current account, SYSTEM and Administrators. It refuses reparse-point ancestors, duplicate/unexpected ZIP entries and overlong extraction paths. It starts the Windows-provided PowerShell executable with `-NoProfile -STA` without overriding the effective host execution policy; enforced organizational policies retain precedence.
 
 Extracted application folders remain after closing. This is intentional: a GUI relaunched through UAC may outlive its original process and still need the modules. These folders contain application code and this document, not backup payloads. After closing **all** GUI and worker processes, you may manually delete obsolete folders inside that exact Portable directory. Do not delete it during a live operation. User-selected OSR recovery storage is separate and is never cleaned by the launcher.
 
