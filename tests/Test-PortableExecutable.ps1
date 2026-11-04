@@ -85,7 +85,7 @@ try {
     [xml]$manifest=Get-Content -LiteralPath (Join-Path $root 'launcher\PortableLauncher.manifest') -Raw
     if ($manifest.assembly.trustInfo.security.requestedPrivileges.requestedExecutionLevel.level -ne 'asInvoker') { throw 'Launcher must not request administrator at startup.' }
     $source=[IO.File]::ReadAllText((Join-Path $root 'launcher\PortableLauncher.cs'))
-    if ($source -notmatch '-NoProfile -STA -ExecutionPolicy RemoteSigned -File' -or $source -match 'ExecutionPolicy Bypass|Verb\s*=\s*"runas"') { throw 'Unexpected launcher privilege or execution policy behavior.' }
+    if ($source -notmatch '-NoProfile -STA -File' -or $source -match '-ExecutionPolicy\b|Verb\s*=\s*"runas"') { throw 'Unexpected launcher privilege or execution policy behavior.' }
     Write-Host 'PASS: asInvoker manifest and Windows PowerShell startup boundary; no OSR action was executed'
 } finally {
     $resolved=[IO.Path]::GetFullPath($testRoot)
