@@ -47,7 +47,7 @@ internal static class PortableLauncher
             if (!Environment.Is64BitOperatingSystem || !File.Exists(powershell))
                 throw new InvalidOperationException("64-bit Windows with Windows PowerShell 5.1 is required. No runtime was installed.");
             ProcessStartInfo start = new ProcessStartInfo(powershell);
-            start.Arguments = "-NoProfile -STA -ExecutionPolicy RemoteSigned -File \"" +
+            start.Arguments = "-NoProfile -STA -File \"" +
                 Path.Combine(package, "src", "Freshservice_OSR_Upgrade_GUI.ps1") + "\"";
             start.WorkingDirectory = package;
             start.UseShellExecute = false;
