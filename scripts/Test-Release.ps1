@@ -18,7 +18,7 @@ $tests=@(Get-ChildItem -LiteralPath (Join-Path $root 'tests') -Filter 'Test-*.ps
 if ($tests.Count -ne 9) { throw 'Expected the nine source and portable-launcher regression suites.' }
 foreach ($test in $tests) {
     Write-Host ('RUN '+$test.Name)
-    & $runtime -NoProfile -STA -ExecutionPolicy RemoteSigned -File $test.FullName
+    & $runtime -NoProfile -STA -File $test.FullName
     if ($LASTEXITCODE -ne 0) { throw ('Regression failed: '+$test.Name) }
 }
 Write-Host 'PASS: all nine Windows PowerShell 5.1 regression suites'
