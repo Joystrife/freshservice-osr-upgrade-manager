@@ -13,7 +13,7 @@ For version 0.5.0, start with the illustrated [User Guide](USER_GUIDE.md), [Know
 From the repository root:
 
 ```powershell
-powershell.exe -NoProfile -STA -ExecutionPolicy RemoteSigned -File ".\src\Freshservice_OSR_Upgrade_GUI.ps1"
+powershell.exe -NoProfile -STA -File ".\src\Freshservice_OSR_Upgrade_GUI.ps1"
 ```
 
 ## Dry Run (recommended first)
