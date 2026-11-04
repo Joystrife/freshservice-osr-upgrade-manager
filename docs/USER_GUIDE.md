@@ -18,7 +18,7 @@ The launcher uses the Windows-provided Windows PowerShell 5.1 and Windows Forms,
 For manual startup from the extracted folder:
 
 ```powershell
-powershell.exe -NoProfile -STA -ExecutionPolicy RemoteSigned -File ".\src\Freshservice_OSR_Upgrade_GUI.ps1"
+powershell.exe -NoProfile -STA -File ".\src\Freshservice_OSR_Upgrade_GUI.ps1"
 ```
 
 Dry Run does not require an administrator token. Live operations require an elevated Windows session. Use an isolated Windows Server lab for initial real tests; the recorded V3 lab evidence used Windows Server 2019, OSR 2.5.0.0 and its original signed MSI. Download Freshworks installers separately from the official portal. They are not included here.
