@@ -75,6 +75,9 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           & .\tests\Test-GuiLabMode.ps1
+      - name: Regression tests - host PowerShell execution policy
+        shell: powershell
+        run: .\tests\Test-HostExecutionPolicy.ps1
       - name: Regression tests - portable executable
         shell: powershell
         run: .\tests\Test-PortableExecutable.ps1
