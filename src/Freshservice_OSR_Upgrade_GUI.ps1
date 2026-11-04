@@ -614,7 +614,7 @@ function New-Run([string]$Mode) {
     $script:lblStatus.Text="Starting $Mode..."
     Set-GuiBusy $true
     $powershellExe=Join-Path $PSHOME 'powershell.exe'
-    $arg='-NoProfile -ExecutionPolicy RemoteSigned -File "{0}" -Mode {1} -RunDirectory "{2}" -ConfigurationPath "{3}" -Operation {4}' -f `
+    $arg='-NoProfile -File "{0}" -Mode {1} -RunDirectory "{2}" -ConfigurationPath "{3}" -Operation {4}' -f `
         $script:WorkerPath,$Mode,$script:CurrentRun,$configPath,$operation
     try{$script:ChildProcess=Start-Process -FilePath $powershellExe -ArgumentList $arg -WindowStyle Hidden -PassThru `
         -RedirectStandardError (Join-Path $script:CurrentRun 'worker-stderr.log') `
