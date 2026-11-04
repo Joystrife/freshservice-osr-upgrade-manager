@@ -62,7 +62,7 @@ A future recovery-provider architecture will select capabilities based on **what
 Download or clone the repository on a Windows host. Run from the project root:
 
 ```powershell
-powershell.exe -NoProfile -STA -ExecutionPolicy RemoteSigned -File ".\src\Freshservice_OSR_Upgrade_GUI.ps1"
+powershell.exe -NoProfile -STA -File ".\src\Freshservice_OSR_Upgrade_GUI.ps1"
 ```
 
 - **DRY RUN** is checked on startup. The simulated upgrade, backup, service changes and rollback do not modify the server; logs remain in memory.
