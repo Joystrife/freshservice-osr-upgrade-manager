@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — Host execution-policy compatibility fix (2026-11-04)
+
+- Correct the confirmed unsigned-worker launch failure on a Windows server where the host execution policy was `Bypass`, but child sessions were explicitly started as `RemoteSigned`.
+- Make the source CMD, UAC GUI relaunch, preflight/deployment worker and portable launcher inherit the host PowerShell execution policy instead of overriding it.
+- Add regression coverage that rejects hard-coded runtime execution-policy overrides. Keep default-on Dry Run, live approvals and all recovery gates unchanged.
+- This does not digitally sign the source, change the machine policy, override Group Policy or bypass enterprise application control. A trusted code-signing certificate is still required when organizational policy mandates signed scripts.
+- The existing `v0.5.1-preview.3` release assets remain unchanged. Test the updated source from the latest `main` branch as a separate build; do not mix individual scripts between builds.
+
 ## 0.5.1-preview.3 - Controlled replacement (2026-11-03, experimental prerelease)
 
 - Recorded one integrated Preview 3 replacement/recovery trial: 11,859-entry inventory verification, identity migration, original installation restoration and operator acceptance. The dedicated lab entry returned ONLINE; no AD/business workflow was exercised.
