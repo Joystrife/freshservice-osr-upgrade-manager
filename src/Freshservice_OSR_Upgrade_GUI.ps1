@@ -547,7 +547,7 @@ function Request-GuiElevation {
     Save-GuiPreferences
     $payload = Export-GuiResumeState
     $powershellExe = Join-Path $PSHOME 'powershell.exe'
-    $args = '-NoProfile -STA -ExecutionPolicy RemoteSigned -File "{0}" -ResumeState "{1}"' -f $script:GuiScriptPath,$payload
+    $args = '-NoProfile -STA -File "{0}" -ResumeState "{1}"' -f $script:GuiScriptPath,$payload
     try {
         $elevated = Start-Process -FilePath $powershellExe -ArgumentList $args -Verb RunAs -PassThru -ErrorAction Stop
         if (-not $elevated) { throw 'Windows did not return an elevated process.' }
